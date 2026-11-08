@@ -36,7 +36,7 @@ export function Documents({ go }: { go: (v: View) => void }) {
         </div>
       ) : (
         <>
-          <input className="search" type="search" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input id="search" className="search" type="search" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
           <div className="chips">
             <button className={`chip ${filter === "all" ? "on" : ""}`} onClick={() => setFilter("all")}>
               All
@@ -56,6 +56,7 @@ export function Documents({ go }: { go: (v: View) => void }) {
                   <span className="doc-summary">{d.analysis.summary}</span>
                   <span className="muted small">
                     {new Date(d.createdAt).toLocaleDateString("en-IE")}
+                    {d.example && <span className="badge example">Example</span>}
                     {d.status === "needs_review" && <span className="badge warn">Check</span>}
                   </span>
                 </button>

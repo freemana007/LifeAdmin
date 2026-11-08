@@ -32,6 +32,8 @@ export interface Doc {
   createdAt: string;
   uploadedByName: string | null;
   text?: string;
+  /** Demo build: a pre-loaded example document. */
+  example?: boolean;
 }
 
 export interface Deadline {
@@ -45,7 +47,7 @@ export interface Deadline {
   ownerId: string | null;
   ownerName: string | null;
   done: boolean;
-  document: { id: string; title: string; docType: DocType; provider: string | null } | null;
+  document: { id: string; title: string; docType: DocType; provider: string | null; example?: boolean } | null;
 }
 
 export interface Me {
@@ -60,6 +62,8 @@ export interface Me {
     freeLimit: number;
   };
   ai: "claude" | "heuristic";
+  /** Present only in the in-browser demo build. */
+  demo?: { storage: "account" | "device"; photos: boolean };
 }
 
 export interface Timeline {
@@ -95,11 +99,13 @@ export function setToken(token: string | null) {
   }
 }
 
-export class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
+import { ApiError } from "./apiError";
+import { localApi } from "./demo/localApi";
+
+export { ApiError };
+
+/** The demo build runs entirely in the browser (published as a claude.ai page). */
+export const DEMO = import.meta.env.VITE_DEMO === "1";
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
@@ -118,7 +124,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data as T;
 }
 
-export const api = {
+const httpApi = {
   signup: (name: string, email: string, inviteCode?: string) =>
     call<{ token: string }>("POST", "/signup", { name, email, inviteCode: inviteCode || undefined }),
   me: () => call<Me>("GET", "/me"),
@@ -135,3 +141,5 @@ export const api = {
     patch: Partial<{ title: string; date: string; amount: number | null; ownerId: string | null; done: boolean; confirm: boolean }>,
   ) => call<Deadline>("PATCH", `/deadlines/${id}`, patch),
 };
+
+export const api: typeof httpApi = DEMO ? (localApi as unknown as typeof httpApi) : httpApi;

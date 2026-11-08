@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { api, type Me } from "../api";
+import { api, DEMO, type Me } from "../api";
 
-export function Household({ me, onChanged, onSignOut }: { me: Me; onChanged: () => void; onSignOut: () => void }) {
+export function Household({ me, onChanged, onSignOut }: { me: Me; onChanged: () => void; onSignOut?: () => void }) {
   const h = me.household;
   const [name, setName] = useState(h.name);
   const [busy, setBusy] = useState(false);
@@ -30,7 +30,7 @@ export function Household({ me, onChanged, onSignOut }: { me: Me; onChanged: () 
       >
         <label>
           Household name
-          <input value={name} onChange={(e) => setName(e.target.value)} />
+          <input id="household-name" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         {name !== h.name && (
           <button className="btn small primary" disabled={busy}>
@@ -55,15 +55,19 @@ export function Household({ me, onChanged, onSignOut }: { me: Me; onChanged: () 
             </li>
           ))}
         </ul>
-        <p className="small">
-          Invite a partner, family member or someone you manage admin for. They sign up with this code:
-        </p>
-        <div className="inbox">
-          <code>{h.inviteCode}</code>
-        </div>
+        {DEMO ? (
+          <p className="small muted">Sharing with a partner or family member, with an owner for each deadline, is part of the full app.</p>
+        ) : (
+          <>
+            <p className="small">Invite a partner, family member or someone you manage admin for. They sign up with this code:</p>
+            <div className="inbox">
+              <code>{h.inviteCode}</code>
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="card">
+      {!DEMO && <div className="card">
         <h2 className="card-title">Calendar</h2>
         <p className="small">Subscribe in Google, Outlook or Apple Calendar to see every deadline there too.</p>
         <div className="inbox">
@@ -72,7 +76,7 @@ export function Household({ me, onChanged, onSignOut }: { me: Me; onChanged: () 
         <a className="btn small" href={calendarUrl.replace(/^https?:/, "webcal:")}>
           Subscribe
         </a>
-      </div>
+      </div>}
 
       <div className="card">
         <h2 className="card-title">Plan</h2>
@@ -101,16 +105,27 @@ export function Household({ me, onChanged, onSignOut }: { me: Me; onChanged: () 
 
       <div className="card">
         <h2 className="card-title">Privacy</h2>
-        <p className="small">
-          Your documents are stored encrypted in the EU. They're only used to help you, never to train AI models. You can delete any
-          document at any time.
-        </p>
+        {!me.demo && (
+          <p className="small">
+            Your documents are stored encrypted in the EU. They're only used to help you, never to train AI models. You can delete any
+            document at any time.
+          </p>
+        )}
+        {me.demo && (
+          <p className="small">
+            {me.demo.storage === "account"
+              ? "In this demo your documents are saved privately to your claude.ai account. Nobody else who opens this page can see them."
+              : "In this demo your documents are saved in this browser only."}
+          </p>
+        )}
         <p className="small muted">Reader: {me.ai === "claude" ? "AI (Claude)" : "basic offline reader"}</p>
       </div>
 
-      <button className="btn" onClick={onSignOut}>
-        Sign out
-      </button>
+      {onSignOut && (
+        <button className="btn" onClick={onSignOut}>
+          Sign out
+        </button>
+      )}
     </section>
   );
 }

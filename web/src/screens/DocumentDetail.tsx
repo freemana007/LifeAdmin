@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Confidence, type Deadline, type Doc, type Draft, type DraftKind, type Me } from "../api";
 import type { View } from "../App";
 import { DOC_TYPE_LABEL, KIND_LABEL, money } from "../format";
@@ -45,15 +45,15 @@ function DeadlineEditor({ d, me, onSaved }: { d: Deadline; me: Me; onSaved: (d: 
       <div className="de-fields">
         <label>
           Date
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <input id={`date-${d.id}`} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
         <label>
           Amount ({d.currency ?? "EUR"})
-          <input type="number" inputMode="decimal" step="0.01" min="0" value={amount} placeholder="—" onChange={(e) => setAmount(e.target.value)} />
+          <input id={`amount-${d.id}`} type="number" inputMode="decimal" step="0.01" min="0" value={amount} placeholder="—" onChange={(e) => setAmount(e.target.value)} />
         </label>
         <label>
           Owner
-          <select value={d.ownerId ?? ""} onChange={(e) => void api.updateDeadline(d.id, { ownerId: e.target.value || null }).then(onSaved)}>
+          <select id={`owner-${d.id}`} value={d.ownerId ?? ""} onChange={(e) => void api.updateDeadline(d.id, { ownerId: e.target.value || null }).then(onSaved)}>
             <option value="">Anyone</option>
             {me.household.members.map((m) => (
               <option key={m.id} value={m.id}>
@@ -85,6 +85,7 @@ export function DocumentDetail({ id, justCaptured, me, go }: { id: string; justC
   const [drafting, setDrafting] = useState<DraftKind | null>(null);
   const [note, setNote] = useState("");
   const [showText, setShowText] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     api.document(id).then(
@@ -109,7 +110,6 @@ export function DocumentDetail({ id, justCaptured, me, go }: { id: string; justC
   }
 
   async function remove() {
-    if (!confirm("Delete this document and its deadlines?")) return;
     await api.deleteDocument(id);
     go({ name: "documents" });
   }
@@ -129,6 +129,7 @@ export function DocumentDetail({ id, justCaptured, me, go }: { id: string; justC
       <div className="doc-head">
         <span className={`type type-${a.docType}`}>{DOC_TYPE_LABEL[a.docType]}</span>
         {a.docTypeConfidence === "low" && <span className="badge conf-low">Unsure of type</span>}
+        {doc.example && <span className="badge example">Example</span>}
         <h1 className="page-title">{a.title}</h1>
         <p className="muted small">
           Added {new Date(doc.createdAt).toLocaleDateString("en-IE")} {doc.uploadedByName && `by ${doc.uploadedByName}`} · via {doc.source}
@@ -208,7 +209,7 @@ export function DocumentDetail({ id, justCaptured, me, go }: { id: string; justC
         <p className="small muted">
           {me.household.plan === "premium" ? "We'll draft an email you can edit and send." : "Templates on the free plan. Premium writes tailored drafts with AI."}
         </p>
-        <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything to add? e.g. “I'm moving house on 1 March”" />
+        <textarea id="draft-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything to add? e.g. “I'm moving house on 1 March”" />
         <div className="draft-buttons">
           {relevantDrafts.map((x) => (
             <button key={x.kind} className="draft-btn" disabled={drafting !== null} onClick={() => makeDraft(x.kind)}>
@@ -239,9 +240,21 @@ export function DocumentDetail({ id, justCaptured, me, go }: { id: string; justC
             Everything looks right
           </button>
         )}
-        <button className="btn danger" onClick={remove}>
-          Delete
-        </button>
+        {confirmDelete ? (
+          <span className="confirm-row">
+            <span className="small">Delete this document and its dates?</span>
+            <button className="btn danger" onClick={remove}>
+              Yes, delete
+            </button>
+            <button className="btn" onClick={() => setConfirmDelete(false)}>
+              Keep
+            </button>
+          </span>
+        ) : (
+          <button className="btn danger" onClick={() => setConfirmDelete(true)}>
+            Delete
+          </button>
+        )}
       </div>
     </section>
   );
@@ -251,6 +264,7 @@ function DraftView({ draft }: { draft: Draft }) {
   const [subject, setSubject] = useState(draft.subject);
   const [body, setBody] = useState(draft.body);
   const [copied, setCopied] = useState(false);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     setSubject(draft.subject);
     setBody(draft.body);
@@ -261,29 +275,29 @@ function DraftView({ draft }: { draft: Draft }) {
     <div className="draft">
       <label>
         Subject
-        <input value={subject} onChange={(e) => setSubject(e.target.value)} />
+        <input id="draft-subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
       </label>
       <label>
         Message
-        <textarea rows={12} value={body} onChange={(e) => setBody(e.target.value)} />
+        <textarea id="draft-body" ref={bodyRef} rows={12} value={body} onChange={(e) => setBody(e.target.value)} />
       </label>
       <div className="row-end">
+        <a className="btn" href={mailto} target="_blank" rel="noreferrer">
+          Open in email
+        </a>
         <button
-          className="btn"
+          className="btn primary"
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(`${subject}\n\n${body}`);
               setCopied(true);
             } catch {
-              /* ignore */
+              bodyRef.current?.select();
             }
           }}
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? "Copied" : "Copy email"}
         </button>
-        <a className="btn primary" href={mailto}>
-          Open in email
-        </a>
       </div>
       <p className="fine">{draft.engine === "claude" ? "Drafted by AI — read it before sending." : "Template — fill in anything in [brackets]."}</p>
     </div>

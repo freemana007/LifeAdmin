@@ -45,6 +45,10 @@ npm test             # API and extraction tests (vitest)
 npm run typecheck
 ```
 
+## Phone demo
+
+`npm run build:demo -w web` builds a version that runs entirely in the browser, packed into one page (`web/dist-demo/life-admin.html`) for publishing as a claude.ai artifact. It reuses the same screens and the offline reader, and swaps the server for `web/src/demo/`. Documents are read by Claude through the artifact runtime when available, including photos. Each person's data is saved privately to their claude.ai account, or in their browser if that isn't possible. Email forwarding, PDFs, household sharing and the calendar feed need the full app.
+
 ## Layout
 
 ```

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, getToken, setToken, type Me } from "./api";
+import { api, ApiError, DEMO, getToken, setToken, type Me } from "./api";
+import icon from "./icon.svg";
 import { Capture } from "./screens/Capture";
 import { DocumentDetail } from "./screens/DocumentDetail";
 import { Documents } from "./screens/Documents";
@@ -23,7 +24,7 @@ const TABS: { name: View["name"]; label: string; icon: string }[] = [
 
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
-  const [loading, setLoading] = useState(Boolean(getToken()));
+  const [loading, setLoading] = useState(DEMO || Boolean(getToken()));
   const [view, setView] = useState<View>({ name: "timeline" });
 
   const refreshMe = useCallback(async () => {
@@ -40,7 +41,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (getToken()) void refreshMe();
+    if (DEMO || getToken()) void refreshMe();
   }, [refreshMe]);
 
   const go = (v: View) => {
@@ -57,8 +58,9 @@ export function App() {
     <div className="shell">
       <header className="topbar">
         <div className="brand">
-          <img src="/icon.svg" alt="" width={28} height={28} />
+          <img src={icon} alt="" width={28} height={28} />
           <span>Life Admin</span>
+          {DEMO && <span className="demo-tag">Demo</span>}
         </div>
         <span className={`plan plan-${me.household.plan}`}>{me.household.plan === "premium" ? "Premium" : "Free"}</span>
       </header>
@@ -69,7 +71,7 @@ export function App() {
         {view.name === "documents" && <Documents go={go} />}
         {view.name === "document" && <DocumentDetail id={view.id} justCaptured={view.justCaptured} me={me} go={go} />}
         {view.name === "household" && (
-          <Household me={me} onChanged={refreshMe} onSignOut={() => (setToken(null), setMe(null), setView({ name: "timeline" }))} />
+          <Household me={me} onChanged={refreshMe} onSignOut={DEMO ? undefined : () => (setToken(null), setMe(null), setView({ name: "timeline" }))} />
         )}
       </main>
 

@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:demo": "tsc -p tsconfig.json --noEmit && vite build --mode demo --outDir dist-demo && node scripts/inline-demo.mjs"
   },
   "devDependencies": {
     "@types/react": "^18.3.31",

@@ -104,6 +104,7 @@ export function TimelineScreen({ me, go }: { me: Me; go: (v: View) => void }) {
                         {longDate(d.date.value)}
                         {d.amount.value != null && <> · {money(d.amount.value, d.currency ?? "EUR")}</>}
                         {d.ownerName && <> · {d.ownerName}</>}
+                        {d.document?.example && <span className="badge example">Example</span>}
                         {!d.date.confirmed && <span className="badge warn">Check</span>}
                       </span>
                     </button>

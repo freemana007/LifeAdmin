@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api, type Me } from "../api";
+import { api, DEMO, type Me } from "../api";
 import type { View } from "../App";
 import { SAMPLES } from "../samples";
 
@@ -12,6 +12,7 @@ export function Capture({ me, go, onCaptured }: { me: Me; go: (v: View) => void;
   const fileRef = useRef<HTMLInputElement>(null);
 
   const h = me.household;
+  const photos = !DEMO || Boolean(me.demo?.photos);
   const remaining = h.plan === "premium" ? null : Math.max(0, h.freeLimit - h.docsThisMonth);
 
   async function send(form: FormData) {
@@ -71,22 +72,30 @@ export function Capture({ me, go, onCaptured }: { me: Me; go: (v: View) => void;
       )}
       {error && <p className="error">{error}</p>}
 
-      <div className="capture-grid">
-        <button className="capture-option" onClick={() => photoRef.current?.click()}>
-          <span className="co-icon" aria-hidden="true">📷</span>
-          <strong>Take a photo</strong>
-          <span>Letters and paper bills</span>
-        </button>
-        <button className="capture-option" onClick={() => fileRef.current?.click()}>
-          <span className="co-icon" aria-hidden="true">📄</span>
-          <strong>Upload a file</strong>
-          <span>PDF or image</span>
-        </button>
-      </div>
-      <input ref={photoRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => sendFile(e.target.files?.[0])} />
-      <input ref={fileRef} type="file" accept="application/pdf,image/*,text/plain" hidden onChange={(e) => sendFile(e.target.files?.[0])} />
+      {photos ? (
+        <div className="capture-grid">
+          <button className="capture-option" onClick={() => photoRef.current?.click()}>
+            <svg className="co-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 8h3l2-3h6l2 3h3v11H4zM12 17a4 4 0 100-8 4 4 0 000 8z" />
+            </svg>
+            <strong>Take a photo</strong>
+            <span>Letters and paper bills</span>
+          </button>
+          <button className="capture-option" onClick={() => fileRef.current?.click()}>
+            <svg className="co-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 3h7l5 5v13H7zM14 3v5h5M12 11v6M9 14l3-3 3 3" />
+            </svg>
+            <strong>Upload a file</strong>
+            <span>{DEMO ? "Photo or text file" : "PDF or image"}</span>
+          </button>
+        </div>
+      ) : (
+        <p className="notice">Reading photos needs Claude, which isn't available in this view. Paste the text of a letter or email below instead.</p>
+      )}
+      <input id="photo" ref={photoRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => sendFile(e.target.files?.[0])} />
+      <input id="upload" ref={fileRef} type="file" accept={DEMO ? "image/*,text/plain" : "application/pdf,image/*,text/plain"} hidden onChange={(e) => sendFile(e.target.files?.[0])} />
 
-      <div className="card">
+      {!DEMO && <div className="card">
         <h2 className="card-title">Forward emails</h2>
         <p className="small">Forward bills and renewal emails to your personal address and they'll appear here automatically.</p>
         <div className="inbox">
@@ -95,7 +104,7 @@ export function Capture({ me, go, onCaptured }: { me: Me; go: (v: View) => void;
             {copied ? "Copied" : "Copy"}
           </button>
         </div>
-      </div>
+      </div>}
 
       <form
         className="card form"
@@ -105,7 +114,7 @@ export function Capture({ me, go, onCaptured }: { me: Me; go: (v: View) => void;
         }}
       >
         <h2 className="card-title">Or paste the text</h2>
-        <textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder="Paste an email or the text of a letter…" />
+        <textarea id="paste" rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder="Paste an email or the text of a letter…" />
         <button className="btn primary" disabled={!text.trim()}>
           Understand this
         </button>
