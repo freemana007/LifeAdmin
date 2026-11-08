@@ -1,0 +1,137 @@
+export type Confidence = "high" | "medium" | "low";
+export type DocType = "bill" | "renewal" | "tax_letter" | "warranty" | "contract" | "official_letter" | "receipt" | "other";
+export type DeadlineKind = "payment" | "renewal" | "response" | "cancellation_window" | "expiry" | "appointment" | "other";
+export type DraftKind = "cancel" | "reply" | "complaint" | "negotiate";
+
+export interface Field<T> {
+  value: T;
+  confidence: Confidence;
+  confirmed: boolean;
+}
+
+export interface Analysis {
+  docType: DocType;
+  docTypeConfidence: Confidence;
+  title: string;
+  provider: string | null;
+  summary: string;
+  actions: string[];
+  referenceNumbers: { label: string; value: string }[];
+  amountDue: { value: number; currency: string; confidence: Confidence } | null;
+  renewalTerms: string | null;
+  flags: string[];
+  engine: "claude" | "heuristic";
+}
+
+export interface Doc {
+  id: string;
+  source: "photo" | "pdf" | "text" | "email";
+  fileName: string | null;
+  analysis: Analysis;
+  status: "needs_review" | "confirmed";
+  createdAt: string;
+  uploadedByName: string | null;
+  text?: string;
+}
+
+export interface Deadline {
+  id: string;
+  documentId: string;
+  title: string;
+  kind: DeadlineKind;
+  date: Field<string>;
+  amount: Field<number | null>;
+  currency: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  done: boolean;
+  document: { id: string; title: string; docType: DocType; provider: string | null } | null;
+}
+
+export interface Me {
+  user: { id: string; name: string; email: string; inboxAddress: string; calendarToken: string };
+  household: {
+    id: string;
+    name: string;
+    inviteCode: string;
+    plan: "free" | "premium";
+    members: { id: string; name: string; email: string }[];
+    docsThisMonth: number;
+    freeLimit: number;
+  };
+  ai: "claude" | "heuristic";
+}
+
+export interface Timeline {
+  today: string;
+  items: Deadline[];
+  stats: { overdue: number; next30Days: number; dueNext30Days: Record<string, number>; needsReview: number; done: number };
+}
+
+export interface Draft {
+  kind: DraftKind;
+  subject: string;
+  body: string;
+  to: string | null;
+  engine: "claude" | "heuristic";
+}
+
+const TOKEN_KEY = "lifeadmin.token";
+
+export function getToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setToken(token: string | null) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* storage unavailable: session lasts until reload */
+  }
+}
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let payload: BodyInit | undefined;
+  if (body instanceof FormData) payload = body;
+  else if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    payload = JSON.stringify(body);
+  }
+  const res = await fetch(`/api${path}`, { method, headers, body: payload });
+  if (res.status === 204) return undefined as T;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
+  return data as T;
+}
+
+export const api = {
+  signup: (name: string, email: string, inviteCode?: string) =>
+    call<{ token: string }>("POST", "/signup", { name, email, inviteCode: inviteCode || undefined }),
+  me: () => call<Me>("GET", "/me"),
+  updateHousehold: (patch: { name?: string; plan?: "free" | "premium" }) => call("PATCH", "/household", patch),
+  timeline: () => call<Timeline>("GET", "/timeline"),
+  documents: () => call<Doc[]>("GET", "/documents"),
+  document: (id: string) => call<{ document: Doc; deadlines: Deadline[] }>("GET", `/documents/${id}`),
+  capture: (form: FormData) => call<{ document: Doc; deadlines: Deadline[] }>("POST", "/documents", form),
+  updateDocument: (id: string, patch: { status?: Doc["status"]; title?: string }) => call<Doc>("PATCH", `/documents/${id}`, patch),
+  deleteDocument: (id: string) => call<void>("DELETE", `/documents/${id}`),
+  draft: (id: string, kind: DraftKind, note?: string) => call<Draft>("POST", `/documents/${id}/drafts`, { kind, note }),
+  updateDeadline: (
+    id: string,
+    patch: Partial<{ title: string; date: string; amount: number | null; ownerId: string | null; done: boolean; confirm: boolean }>,
+  ) => call<Deadline>("PATCH", `/deadlines/${id}`, patch),
+};
