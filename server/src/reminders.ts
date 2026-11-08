@@ -40,6 +40,68 @@ export function dueReminders(db: Database, now = new Date()): DueReminder[] {
   return out;
 }
 
+export interface Digest {
+  user: User;
+  /** Local calendar date the digest belongs to (YYYY-MM-DD). */
+  date: string;
+  items: DueReminder[];
+  subject: string;
+  body: string;
+}
+
+export interface DigestOptions {
+  timeZone?: string;
+  /** Local hour quiet time starts (inclusive). */
+  quietStart?: number;
+  /** Local hour quiet time ends (exclusive). */
+  quietEnd?: number;
+}
+
+function localParts(now: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, hour: Number(get("hour")) };
+}
+
+/**
+ * Calm notification budget: reminders are bundled into one digest per person
+ * per day and never sent in quiet hours. The only extra message allowed is
+ * for something due today that wasn't in the morning's digest.
+ */
+export function dueDigests(db: Database, now = new Date(), opts: DigestOptions = {}): Digest[] {
+  const { timeZone = "Europe/Dublin", quietStart = 21, quietEnd = 8 } = opts;
+  const { date, hour } = localParts(now, timeZone);
+  if (hour >= quietStart || hour < quietEnd) return [];
+
+  const byUser = new Map<string, { user: User; items: DueReminder[] }>();
+  for (const r of dueReminders(db, now)) {
+    for (const user of r.recipients) {
+      const entry = byUser.get(user.id) ?? { user, items: [] };
+      entry.items.push(r);
+      byUser.set(user.id, entry);
+    }
+  }
+
+  const digests: Digest[] = [];
+  for (const { user, items } of byUser.values()) {
+    const alreadySent = (db.digestsSent ?? []).some((d) => d.userId === user.id && d.date === date);
+    const chosen = alreadySent ? items.filter((r) => r.offsetDays === 0) : items;
+    if (!chosen.length) continue;
+    chosen.sort((a, b) => a.deadline.date.value.localeCompare(b.deadline.date.value));
+    const subject =
+      chosen.length === 1 ? chosen[0].message : `${chosen.length} things coming up – nothing else needs you today`;
+    const body = [
+      `Hi ${user.name.split(" ")[0]},`,
+      "",
+      ...chosen.map((r) => `• ${r.message}`),
+      "",
+      "That's everything for now.",
+    ].join("\n");
+    digests.push({ user, date, items: chosen, subject, body });
+  }
+  return digests;
+}
+
 function icsEscape(s: string) {
   return s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/[,;]/g, (m) => `\\${m}`);
 }

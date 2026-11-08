@@ -8,7 +8,10 @@ export type ImageType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
 export interface AiEngine {
   readonly name: "claude" | "heuristic";
   /** Returns text extracted from the file plus the analysis. */
-  analyse(input: { text?: string; file?: { data: Buffer; mimeType: string } }, now?: Date): Promise<{ text: string; analysis: DocumentAnalysis }>;
+  analyse(
+    input: { text?: string; file?: { data: Buffer; mimeType: string }; extraPages?: { data: Buffer; mimeType: string }[] },
+    now?: Date,
+  ): Promise<{ text: string; analysis: DocumentAnalysis }>;
   draft(kind: DraftKind, text: string, analysis: DocumentAnalysis, senderName: string, note?: string): Promise<Draft>;
 }
 
@@ -46,9 +49,10 @@ export const heuristicEngine: AiEngine = {
 
 export const claudeEngine: AiEngine = {
   name: "claude",
-  async analyse({ text, file }, now) {
+  async analyse({ text, file, extraPages }, now) {
     if (file && (file.mimeType === "application/pdf" || isImage(file.mimeType))) {
-      const input = file.mimeType === "application/pdf" ? ({ kind: "pdf", data: file.data } as const) : ({ kind: "image", mediaType: file.mimeType as ImageType, data: file.data } as const);
+      const pages = [file, ...(extraPages ?? [])].filter((p) => isImage(p.mimeType)).map((p) => ({ mediaType: p.mimeType as ImageType, data: p.data }));
+      const input = file.mimeType === "application/pdf" ? ({ kind: "pdf", data: file.data } as const) : ({ kind: "image", images: pages } as const);
       // Keep a text copy for drafting/search: cheap for PDFs, a transcription call for photos.
       const extracted = file.mimeType === "application/pdf" ? await pdfText(file.data).catch(() => "") : "";
       const [analysis, transcript] = await Promise.all([

@@ -56,6 +56,8 @@ export interface Deadline {
   date: ExtractedField<string>;
   amount: ExtractedField<number | null>;
   currency: string | null;
+  /** The phrase in the document this deadline was read from, so people can check it. */
+  evidence: string | null;
   ownerId: string | null;
   done: boolean;
   createdAt: string;
@@ -70,7 +72,7 @@ export interface DocumentAnalysis {
   /** Plain-English list of what the household needs to do. */
   actions: string[];
   referenceNumbers: { label: string; value: string }[];
-  amountDue: { value: number; currency: string; confidence: Confidence } | null;
+  amountDue: { value: number; currency: string; confidence: Confidence; evidence?: string | null } | null;
   renewalTerms: string | null;
   deadlines: {
     title: string;
@@ -78,6 +80,8 @@ export interface DocumentAnalysis {
     date: string;
     amount: number | null;
     confidence: Confidence;
+    /** Short quote from the document that supports the date. */
+    evidence?: string | null;
   }[];
   /** Hint for the "Act" step, e.g. a price rise worth challenging. */
   flags: string[];
@@ -98,6 +102,8 @@ export interface LifeDocument {
   analysis: DocumentAnalysis;
   status: "needs_review" | "confirmed";
   createdAt: string;
+  /** Pre-loaded example shown to new households; not counted against the free plan. */
+  example?: boolean;
 }
 
 export const DRAFT_KINDS = ["cancel", "reply", "complaint", "negotiate"] as const;
@@ -117,4 +123,6 @@ export interface Database {
   documents: LifeDocument[];
   deadlines: Deadline[];
   remindersSent: { deadlineId: string; offsetDays: number; sentAt: string }[];
+  /** One digest per person per day (calm notification budget). */
+  digestsSent?: { userId: string; date: string; sentAt: string }[];
 }

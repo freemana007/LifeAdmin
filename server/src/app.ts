@@ -12,6 +12,7 @@ import {
   docsThisMonth,
   FREE_DOCS_PER_MONTH,
   ingestDocument,
+  seedExamples,
   memberName,
   NotFoundError,
   publicUser,
@@ -97,10 +98,24 @@ export function createApp({ store, ai, inboundSecret, webDist, now = () => new D
   // ---------- Accounts & household ----------
   app.post(
     "/api/signup",
-    h((req, res) => {
-      const body = parse(z.object({ name: z.string().trim().min(1).max(80), email: z.string().trim().email(), inviteCode: z.string().optional() }), req.body);
-      if (store.data.users.some((u) => u.email === body.email.toLowerCase())) throw new HttpError(409, "An account with that email already exists.");
-      const user = createUser(store, body.name, body.email, body.inviteCode || undefined);
+    h(async (req, res) => {
+      // Only a name is needed to start (gradual engagement); email can be added later for reminders.
+      const body = parse(
+        z.object({
+          name: z.string().trim().min(1).max(80),
+          email: z.union([z.string().trim().email(), z.literal("")]).optional(),
+          inviteCode: z.string().optional(),
+          examples: z.boolean().optional(),
+        }),
+        req.body,
+      );
+      const email = body.email?.toLowerCase() ?? "";
+      if (email && store.data.users.some((u) => u.email === email)) {
+        throw new HttpError(409, "There's already an account with that email. Ask the person who set it up for your household's invite code.");
+      }
+      const user = createUser(store, body.name, email, body.inviteCode || undefined);
+      const hasDocs = store.data.documents.some((d) => d.householdId === user.householdId);
+      if (body.examples !== false && !hasDocs) await seedExamples(store, user, now());
       res.status(201).json({ token: user.token, user: publicUser(user) });
     }),
   );
@@ -117,6 +132,20 @@ export function createApp({ store, ai, inboundSecret, webDist, now = () => new D
         household: { ...household, members, docsThisMonth: docsThisMonth(store, household.id, now()), freeLimit: FREE_DOCS_PER_MONTH },
         ai: ai.name,
       });
+    }),
+  );
+
+  app.patch(
+    "/api/me",
+    auth,
+    h((req, res) => {
+      const body = parse(z.object({ email: z.union([z.string().trim().email(), z.literal("")]) }), req.body);
+      const email = body.email.toLowerCase();
+      if (email && store.data.users.some((u) => u.email === email && u.id !== req.user!.id)) throw new HttpError(409, "That email is already used by another account.");
+      store.mutate(() => {
+        req.user!.email = email;
+      });
+      res.json(publicUser(req.user!));
     }),
   );
 
@@ -139,16 +168,19 @@ export function createApp({ store, ai, inboundSecret, webDist, now = () => new D
   app.post(
     "/api/documents",
     auth,
-    upload.single("file"),
+    upload.array("file", 6),
     h(async (req, res) => {
       const text = typeof req.body?.text === "string" ? req.body.text : undefined;
-      const file = req.file;
+      const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+      const file = files[0];
+      // Further photos are extra pages of the same document.
+      const extraPages = files.slice(1).filter((f) => f.mimetype.startsWith("image/")).map((f) => ({ data: f.buffer, mimeType: f.mimetype }));
       if (!file && !text?.trim()) throw new HttpError(400, "Add a photo, a PDF or some text.");
       const source = file ? (file.mimetype === "application/pdf" ? "pdf" : file.mimetype === "text/plain" ? "text" : "photo") : "text";
       const input =
         file?.mimetype === "text/plain"
           ? { text: [file.buffer.toString("utf8"), text].filter(Boolean).join("\n") }
-          : { text, file: file ? { data: file.buffer, mimeType: file.mimetype, fileName: file.originalname } : undefined };
+          : { text, file: file ? { data: file.buffer, mimeType: file.mimetype, fileName: file.originalname } : undefined, extraPages };
       const result = await ingestDocument(store, ai, req.user!, source, input, now());
       res.status(201).json({ document: result.document, deadlines: result.deadlines.map(deadlineView) });
     }),

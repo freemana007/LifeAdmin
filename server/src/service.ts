@@ -1,4 +1,5 @@
-import type { AiEngine } from "./ai/index.js";
+import { heuristicEngine, type AiEngine } from "./ai/index.js";
+import { sampleDocuments } from "./samples.js";
 import type { Store } from "./store.js";
 import type { Deadline, DocumentSource, Household, LifeDocument, User } from "./types.js";
 import { newId, newToken, shortCode, slugify } from "./util.js";
@@ -38,7 +39,18 @@ export function createUser(store: Store, name: string, email: string, inviteCode
 
 export function docsThisMonth(store: Store, householdId: string, now = new Date()): number {
   const month = now.toISOString().slice(0, 7);
-  return store.data.documents.filter((d) => d.householdId === householdId && d.createdAt.startsWith(month)).length;
+  return store.data.documents.filter((d) => d.householdId === householdId && !d.example && d.createdAt.startsWith(month)).length;
+}
+
+/**
+ * Gives a new household something real to look at straight away (value before
+ * effort). Examples are read by the offline reader, so this costs nothing and
+ * never calls an AI service.
+ */
+export async function seedExamples(store: Store, user: User, now = new Date()) {
+  for (const s of sampleDocuments(now).slice(0, 3)) {
+    await ingestDocument(store, heuristicEngine, user, "text", { text: s.text }, now, { example: true });
+  }
 }
 
 export async function ingestDocument(
@@ -46,15 +58,16 @@ export async function ingestDocument(
   ai: AiEngine,
   user: User,
   source: DocumentSource,
-  input: { text?: string; file?: { data: Buffer; mimeType: string; fileName: string } },
+  input: { text?: string; file?: { data: Buffer; mimeType: string; fileName: string }; extraPages?: { data: Buffer; mimeType: string }[] },
   now = new Date(),
+  opts: { example?: boolean } = {},
 ): Promise<{ document: LifeDocument; deadlines: Deadline[] }> {
   const household = store.data.households.find((h) => h.id === user.householdId)!;
-  if (household.plan === "free" && docsThisMonth(store, household.id, now) >= FREE_DOCS_PER_MONTH) {
+  if (!opts.example && household.plan === "free" && docsThisMonth(store, household.id, now) >= FREE_DOCS_PER_MONTH) {
     throw new QuotaError(`The free plan covers ${FREE_DOCS_PER_MONTH} documents a month. Upgrade to Premium for unlimited documents.`);
   }
 
-  const { text, analysis } = await ai.analyse({ text: input.text, file: input.file }, now);
+  const { text, analysis } = await ai.analyse({ text: input.text, file: input.file, extraPages: input.extraPages }, now);
   const document: LifeDocument = {
     id: newId(),
     householdId: household.id,
@@ -66,6 +79,7 @@ export async function ingestDocument(
     analysis,
     status: "needs_review",
     createdAt: now.toISOString(),
+    ...(opts.example ? { example: true } : {}),
   };
   const deadlines: Deadline[] = analysis.deadlines
     .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.date))
@@ -78,6 +92,7 @@ export async function ingestDocument(
       date: { value: d.date, confidence: d.confidence, confirmed: false },
       amount: { value: d.amount, confidence: d.amount == null ? "low" : d.confidence, confirmed: false },
       currency: analysis.amountDue?.currency ?? "EUR",
+      evidence: d.evidence ?? null,
       ownerId: null,
       done: false,
       createdAt: now.toISOString(),

@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, DEMO } from "../api";
 import { viewerName } from "../demo/storage";
-import icon from "../icon.svg";
+import { WelcomeArt } from "../illustrations";
+import { Button } from "../ui/Button";
+import { Icon } from "../ui/Icon";
 
+/** Value before effort (Wroblewski): one field, then straight into a timeline that already has examples on it. */
 export function Welcome({ onSignedIn }: { onSignedIn: (token: string) => void }) {
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [invite, setInvite] = useState("");
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +22,7 @@ export function Welcome({ onSignedIn }: { onSignedIn: (token: string) => void })
     setBusy(true);
     setError(null);
     try {
-      const { token } = await api.signup(name, email, joining ? invite : undefined);
+      const { token } = await api.signup(name.trim(), joining ? invite : undefined);
       onSignedIn(token);
     } catch (err) {
       setError((err as Error).message);
@@ -30,52 +32,55 @@ export function Welcome({ onSignedIn }: { onSignedIn: (token: string) => void })
   }
 
   return (
-    <div className="welcome">
-      <img src={icon} alt="" width={56} height={56} />
-      <h1>Household admin, sorted.</h1>
-      <p className="lede">
-        Snap a letter or forward an email. We explain it in plain English, put the deadlines and money on one timeline, and help you
-        reply, cancel or switch.
-      </p>
-      <ul className="welcome-points">
-        <li>Bills, renewals, Revenue letters, warranties</li>
-        <li>Reminders before things are due</li>
-        <li>Shared with your household</li>
+    <main className="welcome">
+      <WelcomeArt />
+      <div>
+        <h1>All your household post, sorted.</h1>
+        <p className="lede">Snap a letter or forward an email. We'll explain it in plain English, put what's due on one timeline, and help you deal with it.</p>
+      </div>
+      <ul className="promises">
+        <li>
+          <Icon name="calendar" />
+          <span>Every bill, renewal and deadline on one calm timeline</span>
+        </li>
+        <li>
+          <Icon name="quote" />
+          <span>Plain-English summaries that show the exact line each date came from</span>
+        </li>
+        <li>
+          <Icon name="edit" />
+          <span>Cancellations, replies and complaints drafted for you</span>
+        </li>
       </ul>
 
       <form className="card form" onSubmit={submit}>
-        <label>
-          Your name
-          <input id="name" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" />
+        <label className="field">
+          What should we call you?
+          <input id="name" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="given-name" placeholder="Your first name" />
         </label>
-        {!DEMO && (
-          <>
-            <label>
-              Email
-              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
-            </label>
-            <label className="check">
-              <input id="joining" type="checkbox" checked={joining} onChange={(e) => setJoining(e.target.checked)} />
-              I have an invite code from my household
-            </label>
-          </>
-        )}
         {joining && (
-          <label>
+          <label className="field">
             Invite code
-            <input value={invite} onChange={(e) => setInvite(e.target.value)} required autoCapitalize="none" />
+            <input id="invite" value={invite} onChange={(e) => setInvite(e.target.value)} required autoCapitalize="none" autoComplete="off" />
+            <span className="hint">Ask the person who set up your household. It's on their Household page.</span>
           </label>
         )}
         {error && <p className="error">{error}</p>}
-        <button className="btn primary" disabled={busy}>
-          {busy ? "Setting up…" : joining ? "Join household" : "Get started"}
-        </button>
-        <p className="fine">
-          {DEMO
-            ? "This is a demo. We'll add three example letters so you can see how it works; add your own whenever you like."
-            : "Your documents are stored in the EU and never used to train AI models."}
+        <Button variant="primary" size="lg" block disabled={busy || !name.trim()}>
+          {busy ? "Setting up…" : joining ? "Join household" : "Show me how it works"}
+        </Button>
+        <p className="hint">
+          {joining ? "You'll see your household's shared timeline." : "We'll start you off with three example letters. No email or password needed yet."}
         </p>
+        {!DEMO && (
+          <button type="button" className="link small" onClick={() => setJoining((j) => !j)}>
+            {joining ? "Start a new household instead" : "Joining someone's household?"}
+          </button>
+        )}
       </form>
-    </div>
+      <p className="hint" style={{ textAlign: "center" }}>
+        {DEMO ? "Demo: your documents stay private to you." : "Stored in the EU. Never used to train AI models."}
+      </p>
+    </main>
   );
 }

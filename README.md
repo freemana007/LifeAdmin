@@ -17,6 +17,16 @@ This repository is the **clickable prototype** from the product plan: capture �
 | **Household** | Shared timeline, invite code, assign an owner to each deadline, “assigned to me” filter |
 | **Freemium** | 10 documents a month on Free; Premium unlocks unlimited documents and AI-written drafts (simulated upgrade, no payments) |
 
+## Design
+
+The interface follows the UI/UX revamp plan in [`docs/ux-revamp-plan.md`](docs/ux-revamp-plan.md), which draws on ten designers' ideas:
+- **Calm by design:** one daily reminder digest, quiet hours, and no streaks or guilt.
+- **Trust in AI:** every date and amount shows the exact line it was read from, with a one-tap confirm.
+- **Forgiveness:** undo instead of confirmation dialogs.
+- **Mobile first:** thumb-reachable actions and bottom sheets.
+
+Design tokens live in `web/src/design/tokens.css`, components in `web/src/ui/`, and illustrations in `web/src/illustrations/`. The fonts (Bricolage Grotesque and Atkinson Hyperlegible Next) are self-hosted, with no third-party requests. [`docs/usability-test-script.md`](docs/usability-test-script.md) is the before/after usability test.
+
 ## AI engines
 
 - **Claude** (when `ANTHROPIC_API_KEY` is set): reads photos and PDFs directly, returns schema-validated JSON (`server/src/ai/schema.ts`), and writes tailored drafts. Uses `claude-opus-5-5` with server-side refusal fallback enabled (`fallbacks: "default"`). Document text is treated as data, so instructions inside a letter are ignored.

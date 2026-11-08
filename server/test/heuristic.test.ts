@@ -36,6 +36,20 @@ describe("analyseHeuristically", () => {
     expect(a.summary).toContain("€184.62");
   });
 
+  it("quotes where each date and amount came from", () => {
+    const a = analyseHeuristically(electricityBill, NOW);
+    expect(a.deadlines[0].evidence).toBe("This amount will be debited from your account on or after 18/11/2026.");
+    expect(a.amountDue?.evidence).toBe("Total amount due: €184.62");
+  });
+
+  it("trims long lines around the match", () => {
+    const long = `${"Lorem ipsum dolor sit amet ".repeat(8)}payment due by 18/11/2026 ${"and more words here ".repeat(8)}`;
+    const ev = analyseHeuristically(long, NOW).deadlines[0].evidence!;
+    expect(ev.length).toBeLessThanOrEqual(112);
+    expect(ev).toContain("18/11/2026");
+    expect(ev.startsWith("…") && ev.endsWith("…")).toBe(true);
+  });
+
   it("flags an auto-renewing insurance price rise", () => {
     const a = analyseHeuristically(carInsuranceRenewal, NOW);
     expect(a.docType).toBe("renewal");
@@ -56,6 +70,7 @@ describe("analyseHeuristically", () => {
     const a = analyseHeuristically(revenueLetter, NOW);
     expect(a.docType).toBe("tax_letter");
     expect(a.deadlines[0]).toMatchObject({ kind: "response", date: "2026-11-07" });
+    expect(a.summary).toMatch(/routine/);
   });
 
   it("handles a forwarded UK email", () => {

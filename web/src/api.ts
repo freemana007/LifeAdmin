@@ -17,7 +17,7 @@ export interface Analysis {
   summary: string;
   actions: string[];
   referenceNumbers: { label: string; value: string }[];
-  amountDue: { value: number; currency: string; confidence: Confidence } | null;
+  amountDue: { value: number; currency: string; confidence: Confidence; evidence?: string | null } | null;
   renewalTerms: string | null;
   flags: string[];
   engine: "claude" | "heuristic";
@@ -44,6 +44,7 @@ export interface Deadline {
   date: Field<string>;
   amount: Field<number | null>;
   currency: string | null;
+  evidence?: string | null;
   ownerId: string | null;
   ownerName: string | null;
   done: boolean;
@@ -125,8 +126,8 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 const httpApi = {
-  signup: (name: string, email: string, inviteCode?: string) =>
-    call<{ token: string }>("POST", "/signup", { name, email, inviteCode: inviteCode || undefined }),
+  signup: (name: string, inviteCode?: string) => call<{ token: string }>("POST", "/signup", { name, inviteCode: inviteCode || undefined }),
+  updateMe: (patch: { email: string }) => call("PATCH", "/me", patch),
   me: () => call<Me>("GET", "/me"),
   updateHousehold: (patch: { name?: string; plan?: "free" | "premium" }) => call("PATCH", "/household", patch),
   timeline: () => call<Timeline>("GET", "/timeline"),

@@ -2,7 +2,7 @@ import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { heuristicEngine } from "../src/ai/index.js";
 import { createApp } from "../src/app.js";
-import { dueReminders } from "../src/reminders.js";
+import { dueDigests, dueReminders } from "../src/reminders.js";
 import { Store } from "../src/store.js";
 import { carInsuranceRenewal, electricityBill } from "./fixtures/samples.js";
 
@@ -12,7 +12,7 @@ let store: Store;
 let app: ReturnType<typeof createApp>;
 
 async function signup(name = "Anna Byrne", email = "anna@example.ie", inviteCode?: string) {
-  const res = await request(app).post("/api/signup").send({ name, email, inviteCode }).expect(201);
+  const res = await request(app).post("/api/signup").send({ name, email, inviteCode, examples: false }).expect(201);
   return res.body as { token: string; user: { id: string; inboxAddress: string; calendarToken: string; householdId: string } };
 }
 
@@ -116,5 +116,35 @@ describe("API", () => {
       .attach("file", Buffer.from([0xff, 0xd8, 0xff]), { filename: "letter.jpg", contentType: "image/jpeg" })
       .expect(422);
     expect(res.body.error).toMatch(/paste the text/);
+  });
+
+  it("starts a new household with examples that don't count against the free plan", async () => {
+    const res = await request(app).post("/api/signup").send({ name: "Niamh" }).expect(201);
+    const auth = { Authorization: `Bearer ${res.body.token}` };
+    const docs = await request(app).get("/api/documents").set(auth).expect(200);
+    expect(docs.body).toHaveLength(3);
+    expect(docs.body.every((d: { example?: boolean }) => d.example)).toBe(true);
+    const me = await request(app).get("/api/me").set(auth).expect(200);
+    expect(me.body.household.docsThisMonth).toBe(0);
+    await request(app).patch("/api/me").set(auth).send({ email: "niamh@example.ie" }).expect(200);
+    await request(app).patch("/api/me").set(auth).send({ email: "not-an-email" }).expect(400);
+  });
+
+  it("bundles reminders into one daily digest outside quiet hours", async () => {
+    const anna = await signup();
+    const auth = { Authorization: `Bearer ${anna.token}` };
+    await request(app).post("/api/documents").set(auth).field("text", electricityBill).expect(201);
+    await request(app).post("/api/documents").set(auth).field("text", carInsuranceRenewal).expect(201);
+    // 23:30 Dublin time: quiet hours, nothing goes out.
+    expect(dueDigests(store.data, new Date("2026-11-24T23:30:00Z"))).toHaveLength(0);
+    // 09:00: one digest covering every due item.
+    const morning = new Date("2026-11-24T09:00:00Z");
+    const [digest, ...rest] = dueDigests(store.data, morning);
+    expect(rest).toHaveLength(0);
+    expect(digest.items.length).toBeGreaterThanOrEqual(2);
+    expect(digest.body).toContain("That's everything for now.");
+    // Once sent, nothing more that day unless something is due today.
+    store.data.digestsSent = [{ userId: anna.user.id, date: digest.date, sentAt: morning.toISOString() }];
+    expect(dueDigests(store.data, new Date("2026-11-24T15:00:00Z"))).toHaveLength(0);
   });
 });

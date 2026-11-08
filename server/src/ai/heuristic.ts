@@ -142,6 +142,17 @@ function findProvider(text: string): string | null {
   return first ?? null;
 }
 
+/** A short, readable quote around a match: its own line, trimmed to ~110 characters around the match. */
+export function evidenceAt(text: string, index: number, length: number): string {
+  const line = lineAround(text, index);
+  const lineStart = text.lastIndexOf("\n", index) + 1;
+  const at = index - lineStart;
+  if (line.length <= 110) return line.trim();
+  const start = Math.max(0, Math.min(at - 50, line.length - 110));
+  const quote = line.slice(start, start + 110).trim();
+  return `${start > 0 ? "…" : ""}${quote}${start + 110 < line.length ? "…" : ""}`;
+}
+
 function lineAround(text: string, index: number): string {
   const start = text.lastIndexOf("\n", index) + 1;
   const end = text.indexOf("\n", index);
@@ -200,6 +211,7 @@ export function analyseHeuristically(text: string, now = new Date()): DocumentAn
       date: d.iso,
       amount: amountNearby,
       confidence: d.iso >= today ? "medium" : "low",
+      evidence: evidenceAt(clean, d.index, d.raw.length),
     });
   }
   // A bill with a date but no explicit cue: take the latest future date as the due date.
@@ -212,6 +224,7 @@ export function analyseHeuristically(text: string, now = new Date()): DocumentAn
         date: future.iso,
         amount: dueAmount?.value ?? null,
         confidence: "low",
+        evidence: evidenceAt(clean, future.index, future.raw.length),
       });
     }
   }
@@ -256,8 +269,16 @@ export function analyseHeuristically(text: string, now = new Date()): DocumentAn
   if (docType === "tax_letter") actions.push("Check the figures against your own records and log in to your tax account if anything is due.");
   if (!actions.length) actions.push("No action spotted. File it for reference.");
 
+  // Calm framing for letters people tend to dread.
+  const reassurance =
+    docType === "tax_letter"
+      ? "Letters like this are routine and usually just ask you to confirm or pay something."
+      : docType === "official_letter"
+        ? "This is a standard letter; here's what it asks for."
+        : "";
   const parts = [
     `This looks like a ${TYPE_LABEL[docType]}${provider ? ` from ${provider}` : ""}.`,
+    reassurance,
     dueAmount ? `The main amount mentioned is ${formatMoney(dueAmount.value, dueAmount.currency)}.` : "",
     next ? `The key date is ${formatDate(next.date)}.` : "We couldn't find a clear deadline – please check the document.",
   ];
@@ -270,7 +291,14 @@ export function analyseHeuristically(text: string, now = new Date()): DocumentAn
     summary: parts.filter(Boolean).join(" "),
     actions,
     referenceNumbers,
-    amountDue: dueAmount ? { value: dueAmount.value, currency: dueAmount.currency, confidence: amounts.length === 1 ? "medium" : "low" } : null,
+    amountDue: dueAmount
+      ? {
+          value: dueAmount.value,
+          currency: dueAmount.currency,
+          confidence: amounts.length === 1 ? "medium" : "low",
+          evidence: evidenceAt(clean, dueAmount.index, 1),
+        }
+      : null,
     renewalTerms: renewalLine?.trim() ?? null,
     deadlines,
     flags,

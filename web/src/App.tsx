@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, DEMO, getToken, setToken, type Me } from "./api";
+import { api, ApiError, DEMO, getToken, setToken, type DraftKind, type Me } from "./api";
 import icon from "./icon.svg";
 import { Capture } from "./screens/Capture";
 import { DocumentDetail } from "./screens/DocumentDetail";
@@ -7,25 +7,38 @@ import { Documents } from "./screens/Documents";
 import { Household } from "./screens/Household";
 import { TimelineScreen } from "./screens/Timeline";
 import { Welcome } from "./screens/Welcome";
+import { Icon, type IconName } from "./ui/Icon";
+import { ToastProvider, useToast } from "./ui/Toast";
 
 export type View =
   | { name: "timeline" }
   | { name: "capture" }
   | { name: "documents" }
   | { name: "household" }
-  | { name: "document"; id: string; justCaptured?: boolean };
+  | { name: "document"; id: string; justCaptured?: boolean; draft?: DraftKind };
 
-const TABS: { name: View["name"]; label: string; icon: string }[] = [
-  { name: "timeline", label: "Timeline", icon: "M4 6h16M4 12h10M4 18h13" },
-  { name: "capture", label: "Add", icon: "M12 5v14M5 12h14" },
-  { name: "documents", label: "Documents", icon: "M7 3h7l5 5v13H7zM14 3v5h5" },
-  { name: "household", label: "Household", icon: "M3 11l9-7 9 7v9H3zM9 20v-6h6v6" },
+const TABS: { name: View["name"]; label: string; icon: IconName }[] = [
+  { name: "timeline", label: "Timeline", icon: "timeline" },
+  { name: "capture", label: "Add", icon: "plus" },
+  { name: "documents", label: "Library", icon: "library" },
+  { name: "household", label: "Household", icon: "home" },
 ];
 
 export function App() {
+  return (
+    <ToastProvider>
+      <Shell />
+    </ToastProvider>
+  );
+}
+
+function Shell() {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(DEMO || Boolean(getToken()));
   const [view, setView] = useState<View>({ name: "timeline" });
+  // Documents waiting out their undo window before they are really deleted.
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const toast = useToast();
 
   const refreshMe = useCallback(async () => {
     try {
@@ -44,10 +57,34 @@ export function App() {
     if (DEMO || getToken()) void refreshMe();
   }, [refreshMe]);
 
-  const go = (v: View) => {
+  const go = useCallback((v: View) => {
     setView(v);
     window.scrollTo({ top: 0 });
-  };
+  }, []);
+
+  const deleteDocument = useCallback(
+    (id: string, title: string) => {
+      setHidden((s) => new Set(s).add(id));
+      go({ name: "documents" });
+      const unhide = () =>
+        setHidden((s) => {
+          const n = new Set(s);
+          n.delete(id);
+          return n;
+        });
+      toast({
+        message: `Deleted “${title}”`,
+        undo: unhide,
+        onExpire: () => {
+          void api.deleteDocument(id).finally(() => {
+            unhide();
+            void refreshMe();
+          });
+        },
+      });
+    },
+    [go, toast, refreshMe],
+  );
 
   if (loading) return <div className="splash">Loading…</div>;
   if (!me) return <Welcome onSignedIn={(token) => (setToken(token), setLoading(true), void refreshMe())} />;
@@ -57,19 +94,21 @@ export function App() {
   return (
     <div className="shell">
       <header className="topbar">
-        <div className="brand">
+        <div className="wordmark">
           <img src={icon} alt="" width={28} height={28} />
           <span>Life Admin</span>
           {DEMO && <span className="demo-tag">Demo</span>}
         </div>
-        <span className={`plan plan-${me.household.plan}`}>{me.household.plan === "premium" ? "Premium" : "Free"}</span>
+        <span className={`pill ${me.household.plan === "premium" ? "pill-premium" : ""}`}>{me.household.plan === "premium" ? "Premium" : "Free plan"}</span>
       </header>
 
-      <main className="content">
-        {view.name === "timeline" && <TimelineScreen me={me} go={go} />}
+      <main className="content" id="main">
+        {view.name === "timeline" && <TimelineScreen me={me} go={go} hidden={hidden} />}
         {view.name === "capture" && <Capture me={me} go={go} onCaptured={refreshMe} />}
-        {view.name === "documents" && <Documents go={go} />}
-        {view.name === "document" && <DocumentDetail id={view.id} justCaptured={view.justCaptured} me={me} go={go} />}
+        {view.name === "documents" && <Documents go={go} hidden={hidden} />}
+        {view.name === "document" && (
+          <DocumentDetail key={view.id} id={view.id} justCaptured={view.justCaptured} openDraft={view.draft} me={me} go={go} onDelete={deleteDocument} />
+        )}
         {view.name === "household" && (
           <Household me={me} onChanged={refreshMe} onSignOut={DEMO ? undefined : () => (setToken(null), setMe(null), setView({ name: "timeline" }))} />
         )}
@@ -79,13 +118,17 @@ export function App() {
         {TABS.map((t) => (
           <button
             key={t.name}
-            className={`tab ${activeTab === t.name ? "active" : ""} ${t.name === "capture" ? "tab-primary" : ""}`}
+            className={`tab ${activeTab === t.name ? "active" : ""} ${t.name === "capture" ? "tab-add" : ""}`}
             onClick={() => go({ name: t.name } as View)}
             aria-current={activeTab === t.name ? "page" : undefined}
           >
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-              <path d={t.icon} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            {t.name === "capture" ? (
+              <span className="tab-add-disc">
+                <Icon name="plus" size={24} />
+              </span>
+            ) : (
+              <Icon name={t.icon} size={24} />
+            )}
             <span>{t.label}</span>
           </button>
         ))}

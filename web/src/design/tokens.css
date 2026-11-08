@@ -1,0 +1,180 @@
+/*
+ * Life Admin design tokens.
+ * Layout concept: one calm column; the next thing to do sits in the thumb zone, everything else recedes.
+ * Palette: deep "post-box green" brand on a cool, green-tinted paper; semantic hues encode deadline type
+ * (payment blue, renewal amber, official violet). Dark theme is its own look: deep night-green, soft glow.
+ * Type: Bricolage Grotesque for display and money; Atkinson Hyperlegible Next for reading.
+ */
+:root {
+  /* Brand ramp */
+  --green-50: #eef6f2;
+  --green-100: #d6eadf;
+  --green-200: #afd5c1;
+  --green-300: #7fb99c;
+  --green-400: #4f9a78;
+  --green-500: #2f7c5c;
+  --green-600: #22654a;
+  --green-700: #1b503c;
+  --green-800: #153f30;
+  --green-900: #0e2a20;
+
+  /* Neutral ramp, biased towards the brand green */
+  --n-0: #ffffff;
+  --n-50: #f5f7f4;
+  --n-100: #ebefea;
+  --n-200: #dbe1da;
+  --n-300: #c2cbc2;
+  --n-400: #98a49b;
+  --n-500: #5c6a62;
+  --n-600: #46524b;
+  --n-700: #3c4741;
+  --n-800: #252e29;
+  --n-900: #151b18;
+
+  /* Spacing scale */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+
+  /* Type scale */
+  --t-xs: 0.75rem;
+  --t-sm: 0.875rem;
+  --t-md: 1rem;
+  --t-lg: 1.25rem;
+  --t-xl: 1.5rem;
+  --t-2xl: 2rem;
+  --font-display: "Bricolage Grotesque Variable", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible Next Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 20px;
+  --r-pill: 999px;
+  --tap: 48px;
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 150ms;
+  --dur: 240ms;
+
+  /* Semantic tokens: light */
+  --bg: var(--n-50);
+  --surface: var(--n-0);
+  --surface-2: var(--n-100);
+  --ink: var(--n-900);
+  --ink-2: var(--n-600);
+  --ink-3: var(--n-500);
+  --line: var(--n-200);
+  --brand: var(--green-700);
+  --brand-strong: var(--green-800);
+  --brand-ink: #ffffff;
+  --brand-soft: var(--green-50);
+  --brand-line: var(--green-200);
+  --focus: var(--green-500);
+  --pay: #2c64a6;
+  --pay-soft: #e7eff9;
+  --renew: #8a5300;
+  --renew-soft: #fbf0de;
+  --official: #6a3fa5;
+  --official-soft: #f1eafa;
+  --warn: #8a5300;
+  --warn-soft: #fbf0de;
+  --alert: #a3261f;
+  --alert-soft: #fbe9e7;
+  --ok: #1d6b3c;
+  --ok-soft: #e3f3e8;
+  --scrim: rgba(14, 42, 32, 0.38);
+  --shadow-1: 0 1px 2px rgba(21, 27, 24, 0.06), 0 1px 1px rgba(21, 27, 24, 0.04);
+  --shadow-2: 0 4px 12px rgba(21, 27, 24, 0.08), 0 1px 3px rgba(21, 27, 24, 0.06);
+  --shadow-3: 0 16px 40px rgba(21, 27, 24, 0.18), 0 4px 10px rgba(21, 27, 24, 0.08);
+  --hero-bg: var(--green-700);
+  --hero-ink: #ffffff;
+  --hero-ink-2: var(--green-100);
+  --hero-glow: transparent;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1310;
+    --surface: #121c18;
+    --surface-2: #1a2621;
+    --ink: #e9efeb;
+    --ink-2: #aab8b0;
+    --ink-3: #8a9a91;
+    --line: #23322b;
+    --brand: #7fd1aa;
+    --brand-strong: #a6e3c6;
+    --brand-ink: #08130e;
+    --brand-soft: #16302a;
+    --brand-line: #2a5444;
+    --focus: #7fd1aa;
+    --pay: #9cc4f5;
+    --pay-soft: #172636;
+    --renew: #f2bd63;
+    --renew-soft: #33270f;
+    --official: #c9adf3;
+    --official-soft: #261d38;
+    --warn: #f2bd63;
+    --warn-soft: #33270f;
+    --alert: #ff978d;
+    --alert-soft: #3a1c19;
+    --ok: #86d9a5;
+    --ok-soft: #15301f;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 6px 16px rgba(0, 0, 0, 0.45);
+    --shadow-3: 0 18px 48px rgba(0, 0, 0, 0.6);
+    --hero-bg: #13261f;
+    --hero-ink: #e9efeb;
+    --hero-ink-2: #a6c9b7;
+    --hero-glow: rgba(127, 209, 170, 0.18);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1310;
+  --surface: #121c18;
+  --surface-2: #1a2621;
+  --ink: #e9efeb;
+  --ink-2: #aab8b0;
+  --ink-3: #8a9a91;
+  --line: #23322b;
+  --brand: #7fd1aa;
+  --brand-strong: #a6e3c6;
+  --brand-ink: #08130e;
+  --brand-soft: #16302a;
+  --brand-line: #2a5444;
+  --focus: #7fd1aa;
+  --pay: #9cc4f5;
+  --pay-soft: #172636;
+  --renew: #f2bd63;
+  --renew-soft: #33270f;
+  --official: #c9adf3;
+  --official-soft: #261d38;
+  --warn: #f2bd63;
+  --warn-soft: #33270f;
+  --alert: #ff978d;
+  --alert-soft: #3a1c19;
+  --ok: #86d9a5;
+  --ok-soft: #15301f;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 6px 16px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 18px 48px rgba(0, 0, 0, 0.6);
+  --hero-bg: #13261f;
+  --hero-ink: #e9efeb;
+  --hero-ink-2: #a6c9b7;
+  --hero-glow: rgba(127, 209, 170, 0.18);
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+  }
+}
