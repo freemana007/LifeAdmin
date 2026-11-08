@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Confidence } from "../api";
-import { money } from "../format";
+import { initials, money, type Category } from "../format";
 
 const CONF_TEXT: Record<Confidence, string> = { high: "Clear in the letter", medium: "Likely right", low: "Worth checking" };
 
@@ -37,6 +37,34 @@ export function EmptyState({ art, title, children, action }: { art: ReactNode; t
       <h2>{title}</h2>
       {children && <div className="empty-body">{children}</div>}
       {action}
+    </div>
+  );
+}
+
+/** A coloured tile with the sender's initials: makes each provider recognisable at a glance. */
+export function ProviderBadge({ name, cat, size = "md" }: { name: string | null | undefined; cat: Category; size?: "sm" | "md" | "lg" }) {
+  const text = initials(name);
+  return (
+    <span className={`badge-provider size-${size} cat-${cat} ${text.length > 2 ? "is-long" : ""}`} aria-hidden="true">
+      {text}
+    </span>
+  );
+}
+
+/** "3 of 5 sorted": progress on the household's own admin, not on app usage. */
+export function Progress({ done, total, label }: { done: number; total: number; label: string }) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return (
+    <div className="progress">
+      <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label={label}>
+        <div className="progress-fill" style={{ width: `${pct}%` }} />
+      </div>
+      <span className="progress-label">
+        <strong>
+          {done} of {total}
+        </strong>{" "}
+        {label}
+      </span>
     </div>
   );
 }

@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { track } from "../analytics";
 import { api, type Deadline, type Doc, type Draft, type DraftKind, type Me } from "../api";
 import type { View } from "../App";
-import { DOC_TYPE_LABEL, KIND_LABEL } from "../format";
-import { ConfidenceChip, DateStamp, Money } from "../ui/bits";
+import { categoryOf, DOC_TYPE_LABEL, KIND_LABEL } from "../format";
+import { ConfidenceChip, DateStamp, Money, ProviderBadge } from "../ui/bits";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+import { useAction } from "../ui/useAction";
 
 const DRAFTS: { kind: DraftKind; label: string; hint: string }[] = [
   { kind: "cancel", label: "Cancel it", hint: "End the contract or policy" },
@@ -14,6 +15,25 @@ const DRAFTS: { kind: DraftKind; label: string; hint: string }[] = [
   { kind: "reply", label: "Reply", hint: "Answer or acknowledge" },
   { kind: "complaint", label: "Complain", hint: "Formal, with a deadline" },
 ];
+const ACT_CAT = { cancel: "receipt", negotiate: "renewal", reply: "bill", complaint: "official" } as const;
+
+const BACK_LABEL: Partial<Record<View["name"], string>> = { timeline: "Timeline", documents: "Library", capture: "Add", household: "Household" };
+
+/** Accepts "84.20", "84,20", "1,250.00", "1.250,00" and "€ 1 250". */
+export function parseMoney(raw: string): number | null {
+  let t = raw.replace(/[€£\s]/g, "");
+  if (!t) return null;
+  const lastComma = t.lastIndexOf(",");
+  const lastDot = t.lastIndexOf(".");
+  if (lastComma > -1 && lastDot > -1) {
+    t = lastComma > lastDot ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  } else if (lastComma > -1) {
+    t = /,\d{1,2}$/.test(t) && t.split(",").length === 2 ? t.replace(",", ".") : t.replace(/,/g, "");
+  }
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : NaN;
+}
+
 const DRAFT_TITLE: Record<DraftKind, string> = { cancel: "Cancellation email", negotiate: "Better-price request", reply: "Reply", complaint: "Complaint" };
 
 /** Wrap every evidence quote found in the text in <mark>, so people can see exactly what was read. */
@@ -45,6 +65,7 @@ export function DocumentDetail({
   openDraft,
   me,
   go,
+  back,
   onDelete,
 }: {
   id: string;
@@ -52,8 +73,10 @@ export function DocumentDetail({
   openDraft?: DraftKind;
   me: Me;
   go: (v: View) => void;
+  back: View["name"];
   onDelete: (id: string, title: string) => void;
 }) {
+  const act = useAction();
   const [doc, setDoc] = useState<Doc | null>(null);
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -74,10 +97,16 @@ export function DocumentDetail({
 
   async function confirmAll() {
     const pending = deadlines.filter((d) => !d.date.confirmed).length;
-    const updated = await api.updateDocument(id, { status: "confirmed" });
-    setDoc((d) => (d ? { ...d, ...updated } : d));
+    const before = deadlines;
     setDeadlines((xs) => xs.map((x) => ({ ...x, date: { ...x.date, confirmed: true }, amount: { ...x.amount, confirmed: true } })));
-    track("fact_confirmed", { count: pending, where: "document" });
+    await act(
+      async () => {
+        const updated = await api.updateDocument(id, { status: "confirmed" });
+        setDoc((d) => (d ? { ...d, status: updated.status } : d));
+        track("fact_confirmed", { count: pending, where: "document" });
+      },
+      { rollback: () => setDeadlines(before) },
+    );
   }
 
   if (error) return <p className="error">{error}</p>;
@@ -90,20 +119,24 @@ export function DocumentDetail({
 
   return (
     <section className="stack">
-      <button className="back" onClick={() => go({ name: "documents" })}>
+      <button className="back" onClick={() => go({ name: back } as View)}>
         <Icon name="back" size={20} />
-        Library
+        {BACK_LABEL[back] ?? "Back"}
       </button>
 
-      <header className="doc-head">
-        <div className="row">
-          <span className={`type type-${a.docType}`}>{DOC_TYPE_LABEL[a.docType]}</span>
-          {doc.example && <span className="badge badge-example">Example</span>}
+      <header className={`doc-band cat-${categoryOf(a.docType)}`}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+          <ProviderBadge name={a.provider ?? a.title} cat={categoryOf(a.docType)} size="lg" />
+          <span className="row">
+            <span className="type-on">{DOC_TYPE_LABEL[a.docType]}</span>
+            {doc.example && <span className="badge badge-on">Example</span>}
+          </span>
         </div>
         <h1>{a.title}</h1>
-        <p className="small muted">
+        <p className="meta">
           Added {new Date(doc.createdAt).toLocaleDateString("en-IE", { day: "numeric", month: "short" })}
-          {doc.uploadedByName && ` by ${doc.uploadedByName}`} · from {doc.source === "email" ? "an email" : doc.source === "photo" ? "a photo" : doc.source === "pdf" ? "a PDF" : "pasted text"}
+          {doc.uploadedByName && ` by ${doc.uploadedByName.trim()}`} · from{" "}
+          {doc.source === "email" ? "an email" : doc.source === "photo" ? "a photo" : doc.source === "pdf" ? "a PDF" : "pasted text"}
         </p>
       </header>
 
@@ -125,7 +158,7 @@ export function DocumentDetail({
           <ul className="facts">
             {deadlines.map((d) => (
               <li key={d.id}>
-                <button className="fact" onClick={() => setEditing(d)} aria-label={`${d.title}. Tap to check or change.`}>
+                <button className={`fact cat-${categoryOf(a.docType, d.kind)}`} onClick={() => setEditing(d)} aria-label={`${d.title}. Tap to check or change.`}>
                   <DateStamp iso={d.date.value} tone={d.done ? "muted" : "default"} />
                   <span className="grow">
                     <span className="fact-top">
@@ -217,7 +250,7 @@ export function DocumentDetail({
         </div>
         <div className="act-grid">
           {drafts.map((x) => (
-            <button key={x.kind} className="act" onClick={() => setDraftKind(x.kind)}>
+            <button key={x.kind} className={`act cat-${ACT_CAT[x.kind]}`} onClick={() => setDraftKind(x.kind)}>
               <strong>{x.label}</strong>
               <span>{x.hint}</span>
             </button>
@@ -299,7 +332,9 @@ function FactSheet({ d, me, onClose, onSaved }: { d: Deadline | null; me: Me; on
   }, [d]);
 
   if (!d) return null;
-  const amountValid = amount === "" || (Number.isFinite(Number(amount)) && Number(amount) >= 0);
+  const parsed = parseMoney(amount);
+  const amountValid = !Number.isNaN(parsed);
+  const original = d.amount.value;
 
   async function save(extra: { done?: boolean } = {}) {
     if (!d) return;
@@ -308,9 +343,9 @@ function FactSheet({ d, me, onClose, onSaved }: { d: Deadline | null; me: Me; on
     setSaving(true);
     try {
       const patch: Parameters<typeof api.updateDeadline>[1] = { confirm: true, ...extra };
-      const changed = date !== d.date.value || amount !== (d.amount.value?.toString() ?? "");
+      const changed = date !== d.date.value || parsed !== original;
       if (date !== d.date.value) patch.date = date;
-      if (amount !== (d.amount.value?.toString() ?? "")) patch.amount = amount === "" ? null : Number(amount);
+      if (parsed !== original) patch.amount = parsed;
       if (owner !== (d.ownerId ?? "")) patch.ownerId = owner || null;
       onSaved(await api.updateDeadline(d.id, patch));
       track(changed ? "fact_corrected" : "fact_confirmed", { kind: d.kind });
@@ -345,7 +380,7 @@ function FactSheet({ d, me, onClose, onSaved }: { d: Deadline | null; me: Me; on
             inputMode="decimal"
             value={amount}
             placeholder="None"
-            onChange={(e) => setAmount(e.target.value.replace(",", "."))}
+            onChange={(e) => setAmount(e.target.value)}
             aria-invalid={!amountValid}
           />
         </label>
@@ -365,7 +400,7 @@ function FactSheet({ d, me, onClose, onSaved }: { d: Deadline | null; me: Me; on
       )}
       {error && <p className="error">{error}</p>}
       <Button variant="primary" size="lg" block icon="check" disabled={saving} onClick={() => save()}>
-        {date !== d.date.value || amount !== (d.amount.value?.toString() ?? "") ? "Save changes" : "Looks right"}
+        {date !== d.date.value || parsed !== original ? "Save changes" : "Looks right"}
       </Button>
       <Button variant="secondary" block disabled={saving} onClick={() => save({ done: !d.done })}>
         {d.done ? "Mark as not done" : "Mark as done"}
@@ -427,6 +462,11 @@ function DraftSheet({ docId, kind, onClose }: { docId: string; kind: DraftKind |
             <Icon name={draft.engine === "claude" ? "sparkle" : "edit"} size={16} />
             {draft.engine === "claude" ? "Written by AI for this letter. Read it before you send it." : "Template. Fill in anything in [square brackets]."}
           </p>
+          {draft.to && (
+            <p className="small">
+              To: <code>{draft.to}</code>
+            </p>
+          )}
           <label className="field">
             Subject
             <input id="draft-subject" value={subject} onChange={(e) => setSubject(e.target.value)} />

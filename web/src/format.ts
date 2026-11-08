@@ -46,3 +46,54 @@ export const totals = (byCurrency: Record<string, number>) =>
   Object.entries(byCurrency)
     .map(([c, v]) => money(v, c))
     .join(" + ") || money(0);
+
+export type Category = "bill" | "renewal" | "official" | "warranty" | "contract" | "receipt" | "other";
+
+const DOC_CAT: Record<DocType, Category> = {
+  bill: "bill",
+  renewal: "renewal",
+  tax_letter: "official",
+  official_letter: "official",
+  warranty: "warranty",
+  contract: "contract",
+  receipt: "receipt",
+  other: "other",
+};
+const KIND_CAT: Record<DeadlineKind, Category> = {
+  payment: "bill",
+  renewal: "renewal",
+  cancellation_window: "renewal",
+  response: "official",
+  expiry: "contract",
+  appointment: "official",
+  other: "other",
+};
+
+/** One colour per kind of letter, used everywhere that letter appears. */
+export const categoryOf = (docType?: DocType | null, kind?: DeadlineKind) => (docType ? DOC_CAT[docType] : kind ? KIND_CAT[kind] : "other");
+
+/** "Pay by", "Renews", … : the verb that goes in front of the date. */
+export const DATE_VERB: Record<DeadlineKind, string> = {
+  payment: "Pay by",
+  renewal: "Renews",
+  cancellation_window: "Cancel by",
+  response: "Reply by",
+  expiry: "Ends",
+  appointment: "On",
+  other: "Due",
+};
+
+export const shortDate = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-IE", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+
+export const monthLabel = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-IE", { month: "long", year: "numeric", timeZone: "UTC" });
+
+/** "Electric Ireland" → "EI", "AXA" → "AXA", "Revenue" → "Re". */
+export function initials(name: string | null | undefined): string {
+  const clean = (name ?? "").replace(/[^\p{L}\p{N}\s&+]/gu, " ").trim();
+  if (!clean) return "?";
+  const words = clean.split(/\s+/).filter((w) => !/^(the|of|and|&|ltd|limited|plc|dac|insurance)$/i.test(w));
+  const ws = words.length ? words : clean.split(/\s+/);
+  if (ws.length === 1) return /^[A-Z0-9]{2,4}$/.test(ws[0]) ? ws[0] : ws[0].slice(0, 2).replace(/^./, (c) => c.toUpperCase());
+  return (ws[0][0] + ws[1][0]).toUpperCase();
+}

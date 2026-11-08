@@ -139,7 +139,9 @@ export function Capture({ me, go, onCaptured }: { me: Me; go: (v: View) => void;
         <>
           {photos ? (
             <button className="capture-primary" onClick={() => photoRef.current?.click()}>
-              <Icon name="camera" />
+              <span className="tile">
+                <Icon name="camera" />
+              </span>
               <span>
                 <strong>Take a photo</strong>
                 <span>Letters and paper bills. Several pages are fine.</span>
@@ -153,16 +155,20 @@ export function Capture({ me, go, onCaptured }: { me: Me; go: (v: View) => void;
           )}
 
           <div className="capture-list">
-            <button className="capture-option" onClick={() => fileRef.current?.click()}>
-              <Icon name="upload" />
+            <button className="capture-option cat-bill" onClick={() => fileRef.current?.click()}>
+              <span className="tile">
+                <Icon name="upload" />
+              </span>
               <span className="grow">
                 <strong>Upload a file</strong>
                 <span>{DEMO ? "A photo or text file" : "A PDF, photo or text file"}</span>
               </span>
               <Icon name="chevron" />
             </button>
-            <button className="capture-option" aria-expanded={pasteOpen} onClick={() => setPasteOpen((o) => !o)}>
-              <Icon name="paste" />
+            <button className="capture-option cat-official" aria-expanded={pasteOpen} onClick={() => setPasteOpen((o) => !o)}>
+              <span className="tile">
+                <Icon name="paste" />
+              </span>
               <span className="grow">
                 <strong>Paste text</strong>
                 <span>From an email or a website</span>
@@ -222,10 +228,10 @@ export function Capture({ me, go, onCaptured }: { me: Me; go: (v: View) => void;
           <div className="stack-sm">
             <p className="small muted">No post to hand? Try an example:</p>
             <div className="choice-chips">
-              {SAMPLES.map((s) => (
+              {SAMPLES.map((s, i) => (
                 <button
                   key={s.label}
-                  className="choice"
+                  className={`choice cat-${(["bill", "renewal", "official", "contract"] as const)[i % 4]}`}
                   onClick={() => {
                     const form = new FormData();
                     form.append("text", s.text);

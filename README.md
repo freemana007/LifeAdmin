@@ -53,7 +53,14 @@ Copy `.env.example` to `.env` (or export the variables) to enable Claude, set th
 ```bash
 npm test             # API and extraction tests (vitest)
 npm run typecheck
+npm run e2e          # builds both apps, then clicks every action in docs/action-inventory.md
 ```
+
+The end-to-end suite (`web/e2e/`) drives every button in both builds:
+- **Full app:** the web app plus the API.
+- **Phone demo:** run against a strict mock of the claude.ai runtime. Data read from it is frozen, overlapping writes are rejected, and failures can be switched on.
+
+It checks that each change survives a reload, that failures show a clear message with Retry, and that every screen passes an axe accessibility scan in light and dark.
 
 ## Phone demo
 

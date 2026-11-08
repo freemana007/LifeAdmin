@@ -22,6 +22,10 @@ const PATHS = {
   edit: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
   calendar: "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5",
   shield: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z",
+  search: "M11 18a7 7 0 100-14 7 7 0 000 14zM20 20l-4.2-4.2",
+  alert: "M12 8v5M12 16.5h.01M12 21a9 9 0 100-18 9 9 0 000 18z",
+  retry: "M20 12a8 8 0 11-2.3-5.6M20 4v5h-5",
+  trendUp: "M4 17l6-6 4 4 6-7M14 8h6v6",
   // Deadline kinds
   payment: "M17 7.5A6 6 0 106.5 16M4 11h9M4 14h8",
   renewal: "M20 11a8 8 0 00-14.5-4.5L4 8M4 4v4h4M4 13a8 8 0 0014.5 4.5L20 16M20 20v-4h-4",

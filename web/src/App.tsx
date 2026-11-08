@@ -7,8 +7,11 @@ import { Documents } from "./screens/Documents";
 import { Household } from "./screens/Household";
 import { TimelineScreen } from "./screens/Timeline";
 import { Welcome } from "./screens/Welcome";
+import { onStorageNotice } from "./demo/storage";
+import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { Icon, type IconName } from "./ui/Icon";
 import { ToastProvider, useToast } from "./ui/Toast";
+import { describeError, useAction } from "./ui/useAction";
 
 export type View =
   | { name: "timeline" }
@@ -36,9 +39,24 @@ function Shell() {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(DEMO || Boolean(getToken()));
   const [view, setView] = useState<View>({ name: "timeline" });
+  // Where Back on a document returns to.
+  const [from, setFrom] = useState<View["name"]>("documents");
   // Documents waiting out their undo window before they are really deleted.
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const toast = useToast();
+  const act = useAction();
+
+  // Safety net: nothing fails silently.
+  useEffect(() => {
+    const onRejection = (e: PromiseRejectionEvent) => {
+      console.error("[life-admin] unhandled", e.reason);
+      toast({ tone: "error", message: describeError(e.reason) });
+    };
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => window.removeEventListener("unhandledrejection", onRejection);
+  }, [toast]);
+
+  useEffect(() => (DEMO ? onStorageNotice((message) => toast({ message, duration: 8000 })) : undefined), [toast]);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -58,7 +76,10 @@ function Shell() {
   }, [refreshMe]);
 
   const go = useCallback((v: View) => {
-    setView(v);
+    setView((cur) => {
+      if (v.name === "document" && cur.name !== "document") setFrom(cur.name);
+      return v;
+    });
     window.scrollTo({ top: 0 });
   }, []);
 
@@ -75,15 +96,11 @@ function Shell() {
       toast({
         message: `Deleted “${title}”`,
         undo: unhide,
-        onExpire: () => {
-          void api.deleteDocument(id).finally(() => {
-            unhide();
-            void refreshMe();
-          });
-        },
+        // The id stays hidden after the real delete, so lists loaded earlier never show it again.
+        onExpire: () => void act(() => api.deleteDocument(id).then(refreshMe), { rollback: unhide }),
       });
     },
-    [go, toast, refreshMe],
+    [go, toast, refreshMe, act],
   );
 
   if (loading) return <div className="splash">Loading…</div>;
@@ -103,15 +120,26 @@ function Shell() {
       </header>
 
       <main className="content" id="main">
+        <ErrorBoundary resetKey={view}>
         {view.name === "timeline" && <TimelineScreen me={me} go={go} hidden={hidden} />}
         {view.name === "capture" && <Capture me={me} go={go} onCaptured={refreshMe} />}
         {view.name === "documents" && <Documents go={go} hidden={hidden} />}
         {view.name === "document" && (
-          <DocumentDetail key={view.id} id={view.id} justCaptured={view.justCaptured} openDraft={view.draft} me={me} go={go} onDelete={deleteDocument} />
+          <DocumentDetail
+            key={view.id}
+            id={view.id}
+            justCaptured={view.justCaptured}
+            openDraft={view.draft}
+            me={me}
+            go={go}
+            back={view.justCaptured ? "timeline" : from}
+            onDelete={deleteDocument}
+          />
         )}
         {view.name === "household" && (
           <Household me={me} onChanged={refreshMe} onSignOut={DEMO ? undefined : () => (setToken(null), setMe(null), setView({ name: "timeline" }))} />
         )}
+        </ErrorBoundary>
       </main>
 
       <nav className="tabbar" aria-label="Main">

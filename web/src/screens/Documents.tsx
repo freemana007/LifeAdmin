@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, type Doc } from "../api";
 import type { View } from "../App";
-import { DOC_TYPE_LABEL } from "../format";
+import { categoryOf, DOC_TYPE_LABEL } from "../format";
 import { EmptyArt } from "../illustrations";
-import { EmptyState } from "../ui/bits";
+import { EmptyState, ProviderBadge } from "../ui/bits";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 
@@ -47,16 +47,17 @@ export function Documents({ go, hidden }: { go: (v: View) => void; hidden: Set<s
         <>
           <label className="search">
             <span className="sr-only">Search your documents</span>
-            <Icon name="library" size={20} />
+            <Icon name="search" size={20} />
             <input id="search" type="search" placeholder="Search: “insurance”, “Revenue”, “bill”…" value={query} onChange={(e) => setQuery(e.target.value)} />
           </label>
           {shown.length === 0 && <p className="muted">Nothing matches “{query}”.</p>}
           <ul className="doc-list">
             {shown.map((d) => (
               <li key={d.id}>
-                <button className="doc-row" onClick={() => go({ name: "document", id: d.id })}>
+                <button className={`doc-row cat-${categoryOf(d.analysis.docType)}`} onClick={() => go({ name: "document", id: d.id })}>
+                  <ProviderBadge name={d.analysis.provider ?? d.analysis.title} cat={categoryOf(d.analysis.docType)} />
                   <span className="row">
-                    <span className={`type type-${d.analysis.docType}`}>{DOC_TYPE_LABEL[d.analysis.docType]}</span>
+                    <span className="type">{DOC_TYPE_LABEL[d.analysis.docType]}</span>
                     {d.example && <span className="badge badge-example">Example</span>}
                   </span>
                   <span className="doc-title">{d.analysis.title}</span>

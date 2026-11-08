@@ -27,7 +27,7 @@ const todayIso = () => {
 async function profileOrThrow(): Promise<Profile> {
   const p = await (await getBackend()).getProfile();
   if (!p) throw new ApiError(401, "Please sign in.");
-  return p;
+  return { ...p, name: p.name.trim() };
 }
 
 async function photosAvailable(): Promise<boolean> {
@@ -186,8 +186,28 @@ function withDocInfo(sd: StoredDoc, profile: Profile): Deadline[] {
   }));
 }
 
-async function findDoc(id: string) {
+/**
+ * Every read goes through here. Documents saved before quotes existed get
+ * them filled in from their own text by the offline reader (no AI call).
+ */
+async function allDocs(): Promise<StoredDoc[]> {
   const docs = await (await getBackend()).listDocs();
+  for (const sd of docs) {
+    if (!sd.deadlines.some((d) => d.evidence === undefined) || !sd.document.text) continue;
+    const fresh = analyseHeuristically(sd.document.text);
+    for (const d of sd.deadlines) {
+      if (d.evidence !== undefined) continue;
+      const match = fresh.deadlines.find((f) => f.date === d.date.value);
+      d.evidence = match?.evidence ?? null;
+    }
+    const amount = sd.document.analysis.amountDue;
+    if (amount && amount.evidence === undefined && fresh.amountDue?.value === amount.value) amount.evidence = fresh.amountDue.evidence ?? null;
+  }
+  return docs;
+}
+
+async function findDoc(id: string) {
+  const docs = await allDocs();
   const sd = docs.find((d) => d.document.id === id);
   if (!sd) throw new ApiError(404, "Document not found.");
   return sd;
@@ -195,7 +215,7 @@ async function findDoc(id: string) {
 
 async function docsThisMonth() {
   const month = new Date().toISOString().slice(0, 7);
-  return (await (await getBackend()).listDocs()).filter((d) => !d.document.example && d.document.createdAt.startsWith(month)).length;
+  return (await allDocs()).filter((d) => !d.document.example && d.document.createdAt.startsWith(month)).length;
 }
 
 /** First run: load the examples, read with the offline reader, so the timeline shows what the app does. */
@@ -206,7 +226,8 @@ async function seedExamples() {
 }
 
 export const localApi = {
-  async signup(name: string) {
+  async signup(rawName: string) {
+    const name = rawName.trim();
     const backend = await getBackend();
     const email = "";
     await backend.putProfile({ name, email, householdName: `${name.split(" ")[0]}'s household`, plan: "free", createdAt: new Date().toISOString() });
@@ -252,7 +273,7 @@ export const localApi = {
   async timeline(): Promise<Timeline> {
     const p = await profileOrThrow();
     const today = todayIso();
-    const items = (await (await getBackend()).listDocs()).flatMap((sd) => withDocInfo(sd, p)).sort((a, b) => a.date.value.localeCompare(b.date.value));
+    const items = (await allDocs()).flatMap((sd) => withDocInfo(sd, p)).sort((a, b) => a.date.value.localeCompare(b.date.value));
     const open = items.filter((d) => !d.done);
     const in30End = new Date(Date.parse(`${today}T00:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10);
     const in30 = open.filter((d) => d.date.value >= today && d.date.value <= in30End);
@@ -277,7 +298,7 @@ export const localApi = {
   },
 
   async documents(): Promise<Doc[]> {
-    return (await (await getBackend()).listDocs()).map((d) => d.document).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return (await allDocs()).map((d) => d.document).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
 
   async document(id: string) {
@@ -361,7 +382,7 @@ Reply with only JSON: {"subject":"...","body":"...","to":"email address from the
   async updateDeadline(id: string, patch: Partial<{ title: string; date: string; amount: number | null; ownerId: string | null; done: boolean; confirm: boolean }>) {
     const backend = await getBackend();
     const p = await profileOrThrow();
-    const sd = (await backend.listDocs()).find((x) => x.deadlines.some((d) => d.id === id));
+    const sd = (await allDocs()).find((x) => x.deadlines.some((d) => d.id === id));
     if (!sd) throw new ApiError(404, "Deadline not found.");
     const d = sd.deadlines.find((x) => x.id === id)!;
     if (patch.title !== undefined) d.title = patch.title;

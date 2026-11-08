@@ -11,9 +11,9 @@ export function WelcomeArt() {
     <svg {...svgProps}>
       <ellipse cx="100" cy="128" rx="78" ry="6" className="illo-shadow" />
       <g className="illo-line">
-        <rect x="22" y="58" width="58" height="40" rx="4" transform="rotate(-12 51 78)" className="illo-fill-paper" />
+        <rect x="22" y="58" width="58" height="40" rx="4" transform="rotate(-12 51 78)" className="illo-fill-amber" />
         <path d="M24 52l29 20 27-26" transform="rotate(-12 51 78)" />
-        <rect x="34" y="74" width="54" height="38" rx="4" transform="rotate(8 61 93)" className="illo-fill-soft" />
+        <rect x="34" y="74" width="54" height="38" rx="4" transform="rotate(8 61 93)" className="illo-fill-blue" />
         <path d="M44 86h26M44 94h18" transform="rotate(8 61 93)" />
         <path d="M96 84c8-2 12-6 16-12" strokeDasharray="3 6" />
         <rect x="114" y="22" width="66" height="96" rx="10" className="illo-fill-paper" />
@@ -26,6 +26,9 @@ export function WelcomeArt() {
         <circle cx="128" cy="92" r="6" />
         <path d="M140 90h26M140 95h14" />
       </g>
+      <circle cx="186" cy="20" r="5" className="illo-accent-amber" />
+      <circle cx="14" cy="40" r="4" className="illo-accent-blue" />
+      <circle cx="98" cy="28" r="3" className="illo-accent-rose" />
     </svg>
   );
 }
@@ -36,14 +39,17 @@ export function CaughtUpArt() {
     <svg {...svgProps}>
       <ellipse cx="100" cy="126" rx="70" ry="6" className="illo-shadow" />
       <g className="illo-line">
-        <rect x="30" y="58" width="76" height="52" rx="6" className="illo-fill-paper" />
+        <rect x="30" y="58" width="76" height="52" rx="6" className="illo-fill-blue" />
         <path d="M32 62l36 26 36-26" />
         <circle cx="96" cy="58" r="14" className="illo-fill-brand" />
         <path d="M89.5 58l4.5 4.5 8-9" className="illo-line-inverse" />
-        <path d="M124 78h40v22a16 16 0 01-16 16h-8a16 16 0 01-16-16z" className="illo-fill-soft" />
+        <path d="M124 78h40v22a16 16 0 01-16 16h-8a16 16 0 01-16-16z" className="illo-fill-amber" />
         <path d="M164 84h6a8 8 0 010 16h-6" />
         <path d="M136 62c-4-6 4-8 0-16M150 64c-4-6 4-8 0-16" className="illo-steam" />
       </g>
+      <circle cx="22" cy="40" r="5" className="illo-accent-rose" />
+      <circle cx="176" cy="54" r="4" className="illo-accent-blue" />
+      <circle cx="112" cy="30" r="3" className="illo-accent-amber" />
     </svg>
   );
 }
@@ -54,10 +60,10 @@ export function EmptyArt() {
     <svg {...svgProps}>
       <ellipse cx="100" cy="126" rx="64" ry="6" className="illo-shadow" />
       <g className="illo-line">
-        <path d="M60 120V64a30 30 0 0160 0v56z" className="illo-fill-soft" />
+        <path d="M60 120V64a30 30 0 0160 0v56z" className="illo-fill-violet" />
         <path d="M120 64a30 30 0 0130 30v26h-30" className="illo-fill-paper" />
         <rect x="72" y="70" width="36" height="8" rx="4" className="illo-fill-paper" />
-        <path d="M150 70V40h18v12h-18" className="illo-fill-brand" />
+        <path d="M150 70V40h18v12h-18" className="illo-fill-amber" />
         <path d="M128 30l16-10M132 40l20-4" strokeDasharray="2 6" />
       </g>
     </svg>
@@ -73,7 +79,7 @@ export function ReadingArt() {
         <path d="M62 14h56l20 20v86H62z" className="illo-fill-paper" />
         <path d="M118 14v20h20" />
         <path d="M76 46h36M76 58h48M76 70h28M76 82h44M76 94h22" />
-        <rect x="104" y="90" width="24" height="12" rx="3" className="illo-fill-soft" />
+        <rect x="104" y="90" width="24" height="12" rx="3" className="illo-fill-amber" />
       </g>
       <rect x="56" y="40" width="88" height="3" rx="1.5" className="illo-scan" />
     </svg>
