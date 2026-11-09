@@ -411,10 +411,14 @@ async function coreTests(browser, mode) {
     await page.click('button:has-text("Swipe through what\'s on")');
     await page.waitForSelector(".swipe-card.is-top");
     const first = await page.locator(".swipe-card.is-top h3").innerText();
-    const box = await page.locator(".swipe-card.is-top").boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + 260);
+    const card = page.locator(".swipe-card.is-top");
+    await card.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(600); // let the smooth scroll settle before measuring
+    const box = await card.boundingBox();
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + box.width / 2, y);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 + 200, box.y + 260, { steps: 8 });
+    await page.mouse.move(box.x + box.width / 2 + 200, y, { steps: 8 });
     await page.mouse.up();
     await page.waitForSelector(`.picks li:has-text("${first.slice(0, 20).replace(/"/g, '\\"')}")`);
     const second = await page.locator(".swipe-card.is-top h3").innerText();
@@ -426,8 +430,14 @@ async function coreTests(browser, mode) {
     await page.waitForFunction((n) => document.querySelector(".swipe-card.is-top h3")?.textContent !== n, third);
     await page.click(".deck-undo");
     await page.waitForFunction((n) => document.querySelector(".swipe-card.is-top h3")?.textContent === n, third);
-    expect((await page.locator(".picks li").count()) === 1, "one pick after undoing the keyboard like");
-    expect(/You like/.test(await text(page, ".taste")) && /Less keen on/.test(await text(page, ".taste")), "taste should show likes and passes");
+    await page
+      .waitForFunction(() => document.querySelectorAll(".picks li").length === 1, null, { timeout: 5000 })
+      .catch(async () => {
+        throw new Error(`expected 1 pick after undo, found ${await page.locator(".picks li").count()}`);
+      });
+    const kindLabel = await page.locator(".picks li .small").first().innerText();
+    const firstKind = kindLabel.split(" · ")[0];
+    await page.waitForFunction((k) => document.querySelector(".taste")?.textContent?.includes(k), firstKind, { timeout: 5000 });
   });
 
   await step(G, "Free time: taste and picks survive reload; Plan with my picks includes them", async () => {

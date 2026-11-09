@@ -561,6 +561,7 @@ function TasteSummary({ taste, confirming, onAskReset, onCancel, onReset }: { ta
   const rate = (v: { like: number; pass: number }) => (v.like + 1) / (v.like + v.pass + 2);
   const likes = entries.filter(([, v]) => v.like > 0 && rate(v) > 0.5).sort((a, b) => rate(b[1]) - rate(a[1]) || b[1].like - a[1].like);
   const nopes = entries.filter(([, v]) => v.pass > v.like).sort((a, b) => b[1].pass - a[1].pass);
+  const mixed = entries.filter(([, v]) => v.like > 0 && v.like === v.pass);
   return (
     <section className="card taste" aria-labelledby="taste-title">
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -603,6 +604,18 @@ function TasteSummary({ taste, confirming, onAskReset, onCancel, onReset }: { ta
             {nopes.map(([k, v]) => (
               <span key={k} className="tag-taste tag-nope">
                 {KIND_LABEL[k] ?? k} <span className="taste-count">{v.pass}</span>
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+      {mixed.length > 0 && (
+        <div className="taste-row">
+          <span className="small muted">Mixed feelings</span>
+          <span className="choice-chips">
+            {mixed.map(([k, v]) => (
+              <span key={k} className="tag-taste tag-nope">
+                {KIND_LABEL[k] ?? k} <span className="taste-count">{v.like}–{v.pass}</span>
               </span>
             ))}
           </span>

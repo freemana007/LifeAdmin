@@ -21,6 +21,13 @@ const EMPTY_TASTE: StoredTaste = { kinds: {}, liked: [], passed: [] };
 async function readTaste(): Promise<StoredTaste> {
   return (await (await getBackend()).getTaste()) ?? { ...EMPTY_TASTE, kinds: {}, liked: [], passed: [] };
 }
+// Swipes come in quick succession: run taste updates one at a time so none overwrites another.
+let tasteQueue: Promise<unknown> = Promise.resolve();
+function serial<T>(fn: () => Promise<T>): Promise<T> {
+  const run = tasteQueue.then(fn, fn);
+  tasteQueue = run.catch(() => {});
+  return run;
+}
 const tasteView = (t: StoredTaste): TasteState => ({ kinds: t.kinds, liked: t.liked as unknown as TasteState["liked"] });
 
 // Free time listings: a dated snapshot of the open data, published next to the page.
@@ -427,7 +434,11 @@ Reply with only JSON: {"subject":"...","body":"...","to":"email address from the
     return { cards: dealDeck({ ...req, taste: t.kinds as Taste }, town, d.places, d.events, seen), ...tasteView(t) };
   },
 
-  async swipe(card: DeckCard, liked: boolean, date: string): Promise<TasteState> {
+  swipe(card: DeckCard, liked: boolean, date: string): Promise<TasteState> {
+    return serial(() => localApi.swipeNow(card, liked, date));
+  },
+
+  async swipeNow(card: DeckCard, liked: boolean, date: string): Promise<TasteState> {
     await profileOrThrow();
     const t = await readTaste();
     const k = (t.kinds[card.kind] ??= { like: 0, pass: 0 });
@@ -442,7 +453,11 @@ Reply with only JSON: {"subject":"...","body":"...","to":"email address from the
     return tasteView(t);
   },
 
-  async unswipe(id: string, date?: string): Promise<TasteState> {
+  unswipe(id: string, date?: string): Promise<TasteState> {
+    return serial(() => localApi.unswipeNow(id, date));
+  },
+
+  async unswipeNow(id: string, date?: string): Promise<TasteState> {
     const t = await readTaste();
     const liked = t.liked.find((l) => l.id === id && (!date || l.date === date));
     const passed = t.passed.find((p) => p.id === id);
