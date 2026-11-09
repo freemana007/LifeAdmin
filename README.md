@@ -101,12 +101,51 @@ server/            Node + Express + TypeScript API
 web/               React + Vite mobile-first PWA
 ```
 
+## Deploy to Vercel
+
+The repo is ready for Vercel:
+- the web app is served as static files;
+- the API runs as one serverless function (`api/index.mjs`) in Dublin (`dub1`);
+- data lives in Postgres;
+- two daily cron jobs replace the local server's timers.
+
+Everything is configured in `vercel.json`.
+
+1. **Import the repo.** On [vercel.com/new](https://vercel.com/new), import `freemana007/LifeAdmin`. Leave the root directory as the repository root and the framework preset as "Other"; `vercel.json` sets the build. Choose which branch to deploy from (merge this branch into `main`, or select it).
+2. **Add a database.** In the project, open **Storage → Create Database → Neon (Postgres)**, pick the Europe (Frankfurt or London) region, and connect it to the project. That sets `DATABASE_URL` for you. The tables are created on first use.
+3. **Add the settings** under **Settings → Environment Variables**:
+
+   | Name | Value |
+   |---|---|
+   | `CRON_SECRET` | Any long random string. Vercel sends it to the cron jobs; anyone without it is refused. |
+   | `ANTHROPIC_API_KEY` | Optional but recommended: reads photos and writes tailored drafts. Without it, the offline reader and templates are used. |
+   | `INBOUND_SECRET`, `INBOX_DOMAIN` | Optional: only once an inbound email provider (Postmark, SendGrid…) posts to `/api/inbound/email`. |
+   | `TICKETMASTER_API_KEY` | Optional: extra gigs in Free time. |
+
+4. **Deploy.** When it's live, open `/api/health`; it should say `{"ok":true,…}`. Then sign up in the app.
+5. **Cron jobs** run automatically:
+   - `/api/cron/reminders` daily at 08:00 UTC: the one-a-day reminder digest, logged for now, as no email provider is connected yet;
+   - `/api/cron/freetime` at 04:30 UTC: refreshes the Free time listings and saves them to the database.
+
+   You'll see both under **Settings → Cron Jobs**.
+
+Limits on Vercel:
+- **Uploads:** 4 MB per file (Vercel's request limit), with a clear message for anything bigger.
+- **Storage:** data is kept as one JSON document in Postgres, saved with a version check. Two changes at the very same moment get a "please try again" (the app's Retry button). That's fine for a prototype; move to proper tables before real scale.
+
+To try this setup locally, against your own Postgres:
+
+```bash
+npm run build
+DATABASE_URL=postgres://user:pass@localhost:5432/lifeadmin CRON_SECRET=dev PORT=3000 node web/e2e/vercel-local.mjs
+```
+
 ## Before launch
 
 The prototype keeps the product shape and leaves out the infrastructure:
 
 - **Auth**: bearer tokens issued at sign-up. Replace with a real identity provider (passwordless email or Sign in with Apple/Google).
-- **Storage**: a JSON file (`data/db.json`). Move to Postgres or Cosmos DB in an EU region with encryption at rest, and keep original files in blob storage.
+- **Storage:** locally, a JSON file (`data/db.json`); on Vercel, a single JSON document in Postgres (see above). Move to proper tables in an EU region with encryption at rest, and keep original files in blob storage.
 - **OCR**: Claude reads images directly. Azure Document Intelligence can be added in front of it for EU-resident OCR.
 - **Reminders**: the hourly loop logs reminders. Connect push notifications and email.
 - **Payments**: the Premium toggle is simulated.

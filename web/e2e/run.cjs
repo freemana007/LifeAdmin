@@ -766,7 +766,10 @@ async function main() {
 
   let server = null;
   if (ONLY !== "demo") {
-    server = spawn(process.execPath, [path.join(ROOT, "server/dist/index.js")], {
+    // E2E_VERCEL=1: the Vercel function (api/index.mjs) on Postgres (DATABASE_URL) instead of the local server.
+    const entry = process.env.E2E_VERCEL ? path.join(__dirname, "vercel-local.mjs") : path.join(ROOT, "server/dist/index.js");
+    server = spawn(process.execPath, [entry], {
+      cwd: ROOT,
       env: { ...process.env, PORT: String(PORT), DATA_FILE: path.join(TMP, "db.json"), AI_ENGINE: "heuristic", ANTHROPIC_API_KEY: "", FREETIME_LIVE: "0" },
       stdio: "ignore",
     });

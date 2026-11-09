@@ -18,6 +18,8 @@ import {
   publicUser,
   QuotaError,
 } from "./service.js";
+import { ConflictError } from "./pgStore.js";
+import { sendDigests } from "./reminders.js";
 import type { Store } from "./store.js";
 import { FreeTimeService } from "./freetime/service.js";
 import { INTERESTS, type Taste } from "./freetime/planner.js";
@@ -43,6 +45,10 @@ export interface AppOptions {
   webDist?: string;
   now?: () => Date;
   freeTime?: FreeTimeService;
+  /** Largest upload in bytes (Vercel functions accept at most 4.5 MB per request). */
+  maxUploadBytes?: number;
+  /** Protects the /api/cron/* routes (Vercel sends `Authorization: Bearer <CRON_SECRET>`). */
+  cronSecret?: string;
 }
 
 class HttpError extends Error {
@@ -57,16 +63,49 @@ const h =
   (req: Request, res: Response, next: NextFunction) =>
     Promise.resolve(fn(req, res)).catch(next);
 
-export function createApp({ store, ai, inboundSecret, webDist, now = () => new Date(), freeTime = new FreeTimeService() }: AppOptions) {
+export function createApp({
+  store,
+  ai,
+  inboundSecret,
+  webDist,
+  now = () => new Date(),
+  freeTime = new FreeTimeService(),
+  maxUploadBytes = 20 * 1024 * 1024,
+  cronSecret,
+}: AppOptions) {
   const app = express();
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 20 * 1024 * 1024 },
+    limits: { fileSize: maxUploadBytes },
     fileFilter: (_req, file, cb) => cb(null, ACCEPTED.includes(file.mimetype)),
   });
 
   app.disable("x-powered-by");
   app.use(express.json({ limit: "30mb" }));
+
+  // Load the latest data before each API request and save changes before the
+  // response goes out (both no-ops for the local file store).
+  app.use("/api", (req, res, next) => {
+    const sendJson = res.json.bind(res);
+    const end = res.end.bind(res) as (...a: unknown[]) => Response;
+    let saving = false;
+    const saveThen = (send: () => Response): Response => {
+      if (saving) return send();
+      saving = true;
+      store.flush().then(send, (err) => {
+        res.json = sendJson;
+        res.end = end as Response["end"];
+        const conflict = err instanceof ConflictError;
+        if (!conflict) console.error("[store] save failed", err);
+        res.status(conflict ? 409 : 503);
+        sendJson({ error: conflict ? err.message : "We couldn't save that just now. Please try again." });
+      });
+      return res;
+    };
+    res.json = ((body: unknown) => saveThen(() => sendJson(body))) as Response["json"];
+    res.end = ((...args: unknown[]) => saveThen(() => end(...args))) as Response["end"];
+    store.sync().then(() => next(), next);
+  });
 
   const auth = (req: Request, _res: Response, next: NextFunction) => {
     const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");
@@ -387,6 +426,11 @@ export function createApp({ store, ai, inboundSecret, webDist, now = () => new D
   );
 
   // ---------- Free time ----------
+  // Newer listings saved by the daily refresh job (serverless hosting).
+  app.use("/api/freetime", (_req, _res, next) => {
+    freeTime.ensureFresh().then(() => next(), next);
+  });
+
   app.get("/api/freetime/meta", (_req, res) => {
     res.json({ towns: TOWNS, interests: INTERESTS, ...freeTime.status() });
   });
@@ -571,6 +615,30 @@ export function createApp({ store, ai, inboundSecret, webDist, now = () => new D
     }),
   );
 
+  // ---------- Scheduled jobs (Vercel Cron) ----------
+  const cronAuth = (req: Request, _res: Response, next: NextFunction) => {
+    if (!cronSecret || req.header("authorization") !== `Bearer ${cronSecret}`) return next(new HttpError(401, "Not allowed."));
+    next();
+  };
+
+  app.get(
+    "/api/cron/reminders",
+    cronAuth,
+    h((_req, res) => {
+      const sent = sendDigests(store, now());
+      res.json({ ok: true, digests: sent.length });
+    }),
+  );
+
+  app.get(
+    "/api/cron/freetime",
+    cronAuth,
+    h(async (_req, res) => {
+      await freeTime.refresh();
+      res.json({ ok: true, ...freeTime.status() });
+    }),
+  );
+
   // ---------- Web app ----------
   if (webDist && existsSync(webDist)) {
     app.use(express.static(webDist));
@@ -580,8 +648,21 @@ export function createApp({ store, ai, inboundSecret, webDist, now = () => new D
   app.use("/api", (_req, _res, next) => next(new HttpError(404, "Not found.")));
 
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    if ((err as { code?: string }).code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: `That file is over ${Math.floor(maxUploadBytes / 1024 / 1024)} MB. Try a photo or a smaller PDF.` });
+    }
     const status =
-      err instanceof HttpError ? err.status : err instanceof QuotaError ? 402 : err instanceof NotFoundError ? 404 : err instanceof UnreadableDocumentError ? 422 : 500;
+      err instanceof HttpError
+        ? err.status
+        : err instanceof ConflictError
+          ? 409
+          : err instanceof QuotaError
+            ? 402
+            : err instanceof NotFoundError
+              ? 404
+              : err instanceof UnreadableDocumentError
+                ? 422
+                : 500;
     if (status === 500) console.error(err);
     res.status(status).json({ error: status === 500 ? "Something went wrong." : err.message });
   });

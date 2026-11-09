@@ -1,3 +1,4 @@
+import type { Store } from "./store.js";
 import type { Database, Deadline, SavedPlan, User } from "./types.js";
 import { addDays, daysBetween, todayIso } from "./util.js";
 
@@ -99,6 +100,29 @@ export function dueDigests(db: Database, now = new Date(), opts: DigestOptions =
     ].join("\n");
     digests.push({ user, date, items: chosen, subject, body });
   }
+  return digests;
+}
+
+/**
+ * Sends today's digests (for now: logs them) and records what was sent so nothing
+ * repeats. Called by the local server's timer and by the Vercel cron job.
+ */
+export function sendDigests(store: Store, now = new Date()): Digest[] {
+  const digests = dueDigests(store.data, now);
+  if (!digests.length) return digests;
+  const sentAt = now.toISOString();
+  store.mutate((db) => {
+    db.digestsSent ??= [];
+    for (const d of digests) {
+      console.log(`[digest] to ${d.user.email || d.user.name}: ${d.subject}\n${d.body}`);
+      db.digestsSent.push({ userId: d.user.id, date: d.date, sentAt });
+      for (const r of d.items) {
+        if (!db.remindersSent.some((x) => x.deadlineId === r.deadline.id && x.offsetDays === r.offsetDays)) {
+          db.remindersSent.push({ deadlineId: r.deadline.id, offsetDays: r.offsetDays, sentAt });
+        }
+      }
+    }
+  });
   return digests;
 }
 

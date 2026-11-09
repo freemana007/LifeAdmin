@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { createEngine } from "./ai/index.js";
 import { createApp } from "./app.js";
 import { FreeTimeService } from "./freetime/service.js";
-import { dueDigests } from "./reminders.js";
+import { sendDigests } from "./reminders.js";
 import { Store } from "./store.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -26,28 +26,8 @@ const app = createApp({
   webDist: resolve(here, "../../web/dist"),
 });
 
-/**
- * Reminder loop: one calm digest per person per day, outside quiet hours.
- * In production this sends a push notification or email; here it logs and
- * records what was sent so nothing repeats.
- */
-function runReminders() {
-  const digests = dueDigests(store.data);
-  if (!digests.length) return;
-  const sentAt = new Date().toISOString();
-  store.mutate((db) => {
-    db.digestsSent ??= [];
-    for (const d of digests) {
-      console.log(`[digest] to ${d.user.email || d.user.name}: ${d.subject}\n${d.body}`);
-      db.digestsSent.push({ userId: d.user.id, date: d.date, sentAt });
-      for (const r of d.items) {
-        if (!db.remindersSent.some((x) => x.deadlineId === r.deadline.id && x.offsetDays === r.offsetDays)) {
-          db.remindersSent.push({ deadlineId: r.deadline.id, offsetDays: r.offsetDays, sentAt });
-        }
-      }
-    }
-  });
-}
+// Reminder loop: one calm digest per person per day, outside quiet hours.
+const runReminders = () => void sendDigests(store);
 runReminders();
 setInterval(runReminders, 15 * 60 * 1000).unref();
 
