@@ -469,3 +469,10 @@ details.more > .more-body { padding: 0 var(--s-4) var(--s-4); }
 .tick .icon { opacity: 0; transform: scale(0.6); transition: opacity var(--dur-fast) var(--ease), transform var(--dur) var(--ease); }
 .is-done .tick .icon { opacity: 1; transform: none; }
 .search > input[type="search"] { padding-left: 44px; }
+.storage-banner {
+  display: flex; align-items: center; gap: var(--s-2); margin: 0 max(16px, env(safe-area-inset-right, 0px)) var(--s-2) max(16px, env(safe-area-inset-left, 0px));
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-3); border-radius: var(--r-md); background: var(--official-soft); color: var(--ink); font-size: var(--t-sm);
+}
+.storage-banner > span { flex: 1; }
+.storage-banner .icon { color: var(--official); }
+.storage-banner .toast-btn { background: transparent; color: var(--ink-2); }

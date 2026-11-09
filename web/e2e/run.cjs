@@ -18,6 +18,8 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "../..");
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lifeadmin-e2e-"));
 const PORT = 3199;
+const DEMO_PORT = 3197;
+const DEMO_URL = `http://localhost:${DEMO_PORT}/demo.html`;
 const BASE = `http://localhost:${PORT}`;
 const MOCK = fs.readFileSync(path.join(__dirname, "mockRuntime.js"), "utf8");
 const ONLY = process.env.E2E_ONLY;
@@ -40,6 +42,7 @@ async function step(group, name, fn) {
     results.push({ group, name, ok: false, error: String(e && e.message ? e.message : e).split("\n")[0], shot });
     process.stdout.write(`  ✗ ${name}\n      ${String(e && e.message ? e.message : e).split("\n")[0]}\n      screenshot: ${shot}\n`);
     if (current) current.errors.length = 0;
+    if (process.env.E2E_BAIL) throw new Error("stopping at first failure (E2E_BAIL)");
   }
 }
 
@@ -62,8 +65,9 @@ async function open(browser, mode, opts = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: opts.scheme ?? "light" });
   await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
   if (mode === "demo") {
-    await context.addInitScript(MOCK);
+    // Settings first: the mock reads them when it starts.
     if (opts.mock) await context.addInitScript(`localStorage.setItem("__mockcfg", ${JSON.stringify(JSON.stringify(opts.mock))})`);
+    await context.addInitScript(MOCK);
   }
   const page = await context.newPage();
   const errors = [];
@@ -72,7 +76,7 @@ async function open(browser, mode, opts = {}) {
     const t = m.text();
     if (m.type() === "error" && /unhandled|screen error|Uncaught/i.test(t)) errors.push(t);
   });
-  await page.goto(mode === "demo" ? `file://${path.join(TMP, "demo.html")}` : BASE);
+  await page.goto(mode === "demo" ? DEMO_URL : BASE);
   current = { page, errors, context };
   return current;
 }
@@ -87,7 +91,20 @@ async function start(page, name = "Anna") {
 const tab = (page, name) => page.click(`nav >> text=${name}`);
 async function reload(page) {
   await page.reload();
-  await page.waitForSelector(".summary-head", { timeout: 10000 });
+  try {
+    await page.waitForSelector(".summary-head", { timeout: 10000 });
+  } catch (e) {
+    const state = await page
+      .evaluate(() => ({
+        url: location.href,
+        keys: Object.keys(localStorage),
+        mockDocs: Object.keys(JSON.parse(localStorage.getItem("__mockdb") || "{}")).length,
+        mode: localStorage.getItem("lifeadmin.demo.mode"),
+        welcome: Boolean(document.querySelector("#name")),
+      }))
+      .catch((x) => String(x));
+    throw new Error(`after reload the timeline didn't appear: ${JSON.stringify(state)}`);
+  }
 }
 const text = (page, sel) => page.locator(sel).first().innerText();
 async function openDoc(page, provider) {
@@ -264,8 +281,11 @@ async function coreTests(browser, mode) {
 
   await step(G, "Document: Confirm all, persists after reload", async () => {
     await openDoc(page, "Eir");
-    await page.click('button:has-text("Confirm")');
-    await page.waitForSelector("text=All confirmed");
+    const btn = page.locator('button.btn-primary:has-text("Confirm")');
+    await btn.waitFor();
+    await btn.click();
+    await page.waitForSelector(".notice.ok, .toast-error", { timeout: 8000 });
+    expect(!(await page.locator(".toast-error").count()), `confirm failed: ${await text(page, ".toast-error").catch(() => "")}`);
     await reload(page);
     await openDoc(page, "Eir");
     await page.waitForSelector("text=All confirmed");
@@ -584,6 +604,15 @@ async function main() {
     `<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>${demoSrc}</body></html>`,
   );
 
+  // Serve the demo over http like the real (https) artifact; file:// storage is unreliable in headless Chromium.
+  const http = require("node:http");
+  const demoServer = http
+    .createServer((req, res) => {
+      res.setHeader("content-type", "text/html; charset=utf-8");
+      res.end(fs.readFileSync(path.join(TMP, "demo.html")));
+    })
+    .listen(DEMO_PORT);
+
   let server = null;
   if (ONLY !== "demo") {
     server = spawn(process.execPath, [path.join(ROOT, "server/dist/index.js")], {
@@ -612,6 +641,7 @@ async function main() {
   } finally {
     await browser.close();
     server?.kill();
+    demoServer.close();
   }
 
   const failed = results.filter((r) => !r.ok);

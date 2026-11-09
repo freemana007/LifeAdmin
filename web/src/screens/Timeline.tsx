@@ -70,7 +70,7 @@ export function TimelineScreen({ me, go, hidden }: { me: Me; go: (v: View) => vo
 
   async function setDone(d: Deadline, done: boolean) {
     patchLocal(d.id, { done });
-    const ok = await act(() => api.updateDeadline(d.id, { done }), { rollback: () => patchLocal(d.id, { done: !done }) });
+    const ok = await act(() => api.updateDeadline(d.id, { done }), { rollback: () => patchLocal(d.id, { done: !done }), retry: () => void setDone(d, done) });
     if (ok && done) {
       track("deadline_done", { kind: d.kind });
       toast({
@@ -85,7 +85,10 @@ export function TimelineScreen({ me, go, hidden }: { me: Me; go: (v: View) => vo
 
   async function confirm(d: Deadline) {
     patchLocal(d.id, { date: { ...d.date, confirmed: true }, amount: { ...d.amount, confirmed: true } });
-    const ok = await act(() => api.updateDeadline(d.id, { confirm: true }), { rollback: () => patchLocal(d.id, { date: d.date, amount: d.amount }) });
+    const ok = await act(() => api.updateDeadline(d.id, { confirm: true }), {
+      rollback: () => patchLocal(d.id, { date: d.date, amount: d.amount }),
+      retry: () => void confirm(d),
+    });
     if (ok) track("fact_confirmed", { kind: d.kind, where: "timeline" });
   }
 

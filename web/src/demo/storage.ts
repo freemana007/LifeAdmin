@@ -149,9 +149,11 @@ class AccountBackend implements Backend {
       }
     });
     this.queues.set(key, run);
-    void run.finally(() => {
+    // Clean up once settled. Both callbacks swallow, so a failed write is only reported once: to its caller.
+    const cleanup = () => {
       if (this.queues.get(key) === run) this.queues.delete(key);
-    });
+    };
+    run.then(cleanup, cleanup);
     return run;
   }
 

@@ -56,7 +56,9 @@ function Shell() {
     return () => window.removeEventListener("unhandledrejection", onRejection);
   }, [toast]);
 
-  useEffect(() => (DEMO ? onStorageNotice((message) => toast({ message, duration: 8000 })) : undefined), [toast]);
+  // Important enough to stay on screen until dismissed (a toast could be replaced by the next one).
+  const [storageNotice, setStorageNotice] = useState<string | null>(null);
+  useEffect(() => (DEMO ? onStorageNotice(setStorageNotice) : undefined), []);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -87,6 +89,10 @@ function Shell() {
     (id: string, title: string) => {
       setHidden((s) => new Set(s).add(id));
       go({ name: "documents" });
+      const commitDelete = (): Promise<unknown> => {
+        setHidden((s) => new Set(s).add(id));
+        return act(() => api.deleteDocument(id).then(refreshMe), { rollback: unhide, retry: () => void commitDelete() });
+      };
       const unhide = () =>
         setHidden((s) => {
           const n = new Set(s);
@@ -97,7 +103,7 @@ function Shell() {
         message: `Deleted “${title}”`,
         undo: unhide,
         // The id stays hidden after the real delete, so lists loaded earlier never show it again.
-        onExpire: () => void act(() => api.deleteDocument(id).then(refreshMe), { rollback: unhide }),
+        onExpire: () => void commitDelete(),
       });
     },
     [go, toast, refreshMe, act],
@@ -119,6 +125,15 @@ function Shell() {
         <span className={`pill ${me.household.plan === "premium" ? "pill-premium" : ""}`}>{me.household.plan === "premium" ? "Premium" : "Free plan"}</span>
       </header>
 
+      {storageNotice && (
+        <div className="storage-banner" role="status">
+          <Icon name="shield" size={20} />
+          <span>{storageNotice}</span>
+          <button className="toast-btn" aria-label="Dismiss" onClick={() => setStorageNotice(null)}>
+            <Icon name="close" size={18} />
+          </button>
+        </div>
+      )}
       <main className="content" id="main">
         <ErrorBoundary resetKey={view}>
         {view.name === "timeline" && <TimelineScreen me={me} go={go} hidden={hidden} />}

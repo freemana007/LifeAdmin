@@ -105,7 +105,7 @@ export function DocumentDetail({
         setDoc((d) => (d ? { ...d, status: updated.status } : d));
         track("fact_confirmed", { count: pending, where: "document" });
       },
-      { rollback: () => setDeadlines(before) },
+      { rollback: () => setDeadlines(before), retry: () => void confirmAll() },
     );
   }
 

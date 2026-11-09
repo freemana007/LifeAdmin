@@ -23,7 +23,10 @@ export function describeError(e: unknown): string {
 export function useAction() {
   const toast = useToast();
   const run = useCallback(
-    async <T,>(fn: () => Promise<T>, opts: { rollback?: () => void; retryable?: boolean } = {}): Promise<T | undefined> => {
+    async <T,>(
+      fn: () => Promise<T>,
+      opts: { rollback?: () => void; retryable?: boolean; /** Repeats the whole action, including its on-screen change. */ retry?: () => void } = {},
+    ): Promise<T | undefined> => {
       try {
         return await fn();
       } catch (e) {
@@ -32,7 +35,7 @@ export function useAction() {
         toast({
           tone: "error",
           message: describeError(e),
-          action: opts.retryable === false ? undefined : { label: "Retry", icon: "retry", run: () => void run(fn, opts) },
+          action: opts.retryable === false ? undefined : { label: "Retry", icon: "retry", run: () => (opts.retry ? opts.retry() : void run(fn, opts)) },
         });
         return undefined;
       }
