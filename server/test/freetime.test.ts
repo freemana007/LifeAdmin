@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { heuristicEngine } from "../src/ai/index.js";
 import { createApp } from "../src/app.js";
 import { parseCsv } from "../src/freetime/csv.js";
-import { distanceKm, plan, travel, type PlanRequest } from "../src/freetime/planner.js";
+import { deck, distanceKm, plan, tasteBoost, travel, type PlanRequest } from "../src/freetime/planner.js";
 import { FreeTimeService } from "../src/freetime/service.js";
 import { kindFromEvent, mapAttractions, mapEvents } from "../src/freetime/sources/failte.js";
 import { parseMetXml } from "../src/freetime/sources/metEireann.js";
@@ -223,6 +223,44 @@ describe("planner", () => {
   });
 });
 
+describe("swiping and taste", () => {
+  it("turns likes and passes into a boost that grows with more swipes", () => {
+    expect(tasteBoost({}, "gig")).toBe(0);
+    const one = tasteBoost({ gig: { like: 1, pass: 0 } }, "gig");
+    const many = tasteBoost({ gig: { like: 8, pass: 0 } }, "gig");
+    expect(one).toBeGreaterThan(0);
+    expect(many).toBeGreaterThan(one);
+    expect(tasteBoost({ pub: { like: 0, pass: 6 } }, "pub")).toBeLessThan(-1.5);
+  });
+
+  it("deals cards for things that fit the slot, skipping ones already swiped", () => {
+    const req = { ...base, start: "18:00", end: "23:30" };
+    const cards = deck(req, cork, places, events, new Set());
+    const cardIds = cards.map((c) => c.id);
+    expect(cardIds).toContain("gig-1"); // 20:00 fits an evening
+    expect(cardIds).not.toContain("gig-other-day");
+    expect(cardIds).not.toContain("far-1");
+    expect(cards.find((c) => c.id === "gig-1")?.when).toMatch(/around 20:00/);
+    expect(deck(req, cork, places, events, new Set(["gig-1"])).map((c) => c.id)).not.toContain("gig-1");
+    // A morning slot can't fit a gig at 8pm.
+    expect(deck({ ...base, start: "09:00", end: "12:00" }, cork, places, events, new Set()).map((c) => c.id)).not.toContain("gig-1");
+  });
+
+  it("puts liked kinds first and keeps adult places away from kids", () => {
+    const req = { ...base, start: "10:00", end: "23:30" };
+    const loves = deck({ ...req, taste: { museum: { like: 6, pass: 0 }, walk: { like: 0, pass: 6 } } }, cork, places, events, new Set());
+    expect(loves[0].kind).toBe("museum");
+    const kids = deck({ ...req, who: "kids" }, cork, places, events, new Set());
+    expect(kids.some((c) => c.kind === "pub" || c.kind === "club")).toBe(false);
+  });
+
+  it("builds liked picks into the plan and never suggests passed ones", () => {
+    const r = plan({ ...base, interests: ["heritage"], prefer: ["walk-2"], avoid: ["museum-1"] }, cork, places, events);
+    expect(r.plans[0].stops.map((s) => s.id)).toContain("walk-2");
+    expect(ids(r)).not.toContain("museum-1");
+  });
+});
+
 describe("Free time API", () => {
   async function setup() {
     const store = new Store(null);
@@ -257,5 +295,33 @@ describe("Free time API", () => {
 
     await request(app).delete(`/api/freetime/plans/${saved.body.id}`).set(auth).expect(204);
     expect((await request(app).get("/api/freetime/plans").set(auth)).body).toHaveLength(0);
+  });
+
+  it("deals a deck, remembers swipes and taste, plans with picks, undoes and resets", async () => {
+    const { app, auth } = await setup();
+    const body = { ...base, near: "cork", start: "10:00", end: "23:30" };
+    const d1 = await request(app).post("/api/freetime/deck").set(auth).send(body).expect(200);
+    const cards = d1.body.cards as { id: string; kind: string }[];
+    const walk = cards.find((c) => c.kind === "walk")!;
+    const pub = cards.find((c) => c.kind === "pub")!;
+    await request(app).post("/api/freetime/swipe").set(auth).send({ liked: true, date: base.date, card: walk }).expect(200);
+    const t = await request(app).post("/api/freetime/swipe").set(auth).send({ liked: false, date: base.date, card: pub }).expect(200);
+    expect(t.body.kinds).toEqual({ walk: { like: 1, pass: 0 }, pub: { like: 0, pass: 1 } });
+    expect(t.body.liked.map((l: { id: string }) => l.id)).toEqual([walk.id]);
+
+    const d2 = await request(app).post("/api/freetime/deck").set(auth).send(body).expect(200);
+    const again = d2.body.cards.map((c: { id: string }) => c.id);
+    expect(again).not.toContain(walk.id);
+    expect(again).not.toContain(pub.id);
+
+    const p = await request(app).post("/api/freetime/plan").set(auth).send({ ...body, usePicks: true }).expect(200);
+    const stopIds = p.body.plans.flatMap((x: { stops: { id: string }[] }) => x.stops.map((s) => s.id));
+    expect(p.body.plans[0].stops.map((s: { id: string }) => s.id)).toContain(walk.id);
+    expect(stopIds).not.toContain(pub.id);
+
+    const undone = await request(app).delete(`/api/freetime/swipe/${pub.id}`).set(auth).expect(200);
+    expect(undone.body.kinds.pub).toEqual({ like: 0, pass: 0 });
+    await request(app).delete("/api/freetime/taste").set(auth).expect(200);
+    expect((await request(app).get("/api/freetime/taste").set(auth)).body).toEqual({ kinds: {}, liked: [] });
   });
 });

@@ -391,7 +391,7 @@ async function coreTests(browser, mode) {
     await page.selectOption("#ft-end", "23:30");
     await page.click('.choice:has-text("Friends")');
     await page.click('.choice:has-text("Gigs & music")');
-    await page.click('button:has-text("Plan my free time")');
+    await page.click('button:has-text("Just plan it for me")');
     await page.waitForSelector(".ft-itinerary", { timeout: 10000 });
     expect((await page.locator(".ft-stop").count()) >= 1, "plan should have stops");
     expect((await page.locator('.ft-stop .kind:has-text("Gig"), .ft-stop .kind:has-text("Live music")').count()) >= 1, "a gigs plan should include music");
@@ -403,6 +403,50 @@ async function coreTests(browser, mode) {
     const href = await page.locator(".ft-stop a:has-text('Map')").first().getAttribute("href");
     expect(/^https:\/\/www\.google\.com\/maps/.test(href ?? ""), "map link should open Google Maps");
     expect(/Fáilte Ireland/.test(await text(page, ".ft-credits")), "open-data credits should be shown");
+  });
+
+  await step(G, "Free time: swipe deck: drag right to like, button to pass, arrow key, undo", async () => {
+    await page.selectOption("#ft-start", "10:00");
+    await page.selectOption("#ft-end", "22:00");
+    await page.click('button:has-text("Swipe through what\'s on")');
+    await page.waitForSelector(".swipe-card.is-top");
+    const first = await page.locator(".swipe-card.is-top h3").innerText();
+    const box = await page.locator(".swipe-card.is-top").boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + 260);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 200, box.y + 260, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForSelector(`.picks li:has-text("${first.slice(0, 20).replace(/"/g, '\\"')}")`);
+    const second = await page.locator(".swipe-card.is-top h3").innerText();
+    await page.click(".deck-nope");
+    await page.waitForFunction((n) => document.querySelector(".swipe-card.is-top h3")?.textContent !== n, second);
+    const third = await page.locator(".swipe-card.is-top h3").innerText();
+    await page.focus(".deck");
+    await page.keyboard.press("ArrowRight");
+    await page.waitForFunction((n) => document.querySelector(".swipe-card.is-top h3")?.textContent !== n, third);
+    await page.click(".deck-undo");
+    await page.waitForFunction((n) => document.querySelector(".swipe-card.is-top h3")?.textContent === n, third);
+    expect((await page.locator(".picks li").count()) === 1, "one pick after undoing the keyboard like");
+    expect(/You like/.test(await text(page, ".taste")) && /Less keen on/.test(await text(page, ".taste")), "taste should show likes and passes");
+  });
+
+  await step(G, "Free time: taste and picks survive reload; Plan with my picks includes them", async () => {
+    const pick = (await page.locator(".picks li strong").first().innerText()).trim();
+    await reload(page);
+    await tab(page, "Free time");
+    await page.waitForSelector(".taste");
+    await page.click('button:has-text("Swipe through what\'s on")');
+    await page.waitForSelector(".picks li");
+    await page.click('button:has-text("Plan with my picks")');
+    await page.waitForSelector(".ft-itinerary", { timeout: 10000 });
+    const stops = await page.locator(".ft-stop h3").allInnerTexts();
+    expect(stops.includes(pick), `plan should include the pick "${pick}" (got ${stops.join(" → ")})`);
+  });
+
+  await step(G, "Free time: reset taste forgets swipes", async () => {
+    await page.click('.taste button:has-text("Reset")');
+    await page.click('.taste button.btn-danger:has-text("Reset")');
+    await page.waitForSelector(".taste", { state: "detached" });
   });
 
   await step(G, "Free time: save a plan (survives reload), then delete it", async () => {
@@ -422,13 +466,13 @@ async function coreTests(browser, mode) {
     await page.click('.choice:has-text("Gigs & music")'); // turn off
     await page.selectOption("#ft-start", "13:00");
     await page.selectOption("#ft-end", "18:00");
-    await page.click('button:has-text("Plan my free time")');
+    await page.click('button:has-text("Just plan it for me")');
     await page.waitForSelector(".ft-itinerary, .empty-state", { timeout: 10000 });
     const kinds = await page.locator(".ft-stop .kind").allInnerTexts();
     expect(!kinds.some((k) => /pub|club/i.test(k)), `kids plan included: ${kinds.join(", ")}`);
     await page.selectOption("#ft-start", "13:00");
     await page.selectOption("#ft-end", "14:00");
-    await page.click('button:has-text("Plan my free time")');
+    await page.click('button:has-text("Just plan it for me")');
     await page.waitForSelector(".ft-itinerary, .empty-state", { timeout: 10000 });
   });
 
@@ -675,7 +719,10 @@ async function a11y(browser, mode) {
       await c.page.waitForSelector(".ft-form");
       await scan("free time form");
       await c.page.selectOption("#ft-near", "cork");
-      await c.page.click('button:has-text("Plan my free time")');
+      await c.page.click('button:has-text("Swipe through what\'s on")');
+      await c.page.waitForSelector(".swipe-card.is-top");
+      await scan("swipe deck");
+      await c.page.click('button:has-text("Just plan it for me")');
       await c.page.waitForSelector(".ft-itinerary, .empty-state", { timeout: 10000 });
       await scan("free time plan");
       expect(!problems.length, problems.join(" || "));

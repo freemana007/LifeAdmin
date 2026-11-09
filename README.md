@@ -66,6 +66,8 @@ It checks that each change survives a reload, that failures show a clear message
 
 The **Free time** tab plans your free hours in Ireland. You choose a day, a time window, a town, who's going, a budget per person and your interests. It builds up to three timed plans, allowing for travel time, typical opening hours, sunset, the forecast and your budget. Evenings are planned around a timed event (a gig, a show) when there's one that fits. With kids, plans never include pubs or clubs. Every stop comes from the data below; nothing is invented. Saved plans also appear in the household's calendar feed.
 
+**Swipe through what's on:** a Tinder-style deck of everything on near you that day. Drag a card right (or tap ♥, or press →) to like it, and left (✕ / ←) to pass. Each person's likes and passes are remembered by type of outing (gigs, walks, pubs…). That taste shapes what's shown first and how plans are scored. Things you passed on are never suggested again, and "Plan with my picks" builds the day around what you liked. "Your taste" shows what you like and what you're less keen on, with a reset.
+
 | Source | Used for | Licence |
 |---|---|---|
 | [Fáilte Ireland – Tourism Activities and Attractions](https://data.gov.ie/dataset/tourism-activities-and-attractions) | Heritage, museums, beaches, walks, food, pubs, activities | CC BY 4.0 |

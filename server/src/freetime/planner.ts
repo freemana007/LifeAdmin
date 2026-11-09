@@ -33,6 +33,27 @@ export interface PlanRequest {
   /** Per person, in euro. null = no limit. */
   budget: number | null;
   interests: Interest[];
+  /** What this person has liked and passed on before, by kind (from swiping). */
+  taste?: Taste;
+  /** Items they swiped right on: built into the plan wherever they fit. */
+  prefer?: string[];
+  /** Items they swiped left on: never suggested. */
+  avoid?: string[];
+}
+
+export type Taste = Partial<Record<Kind, { like: number; pass: number }>>;
+
+/**
+ * How much someone seems to like a kind of outing: -2.5 (always passes) to +2.5
+ * (always likes), shrinking towards 0 when there are only a few swipes.
+ */
+export function tasteBoost(taste: Taste | undefined, kind: Kind): number {
+  const t = taste?.[kind];
+  if (!t) return 0;
+  const n = t.like + t.pass;
+  const rate = (t.like + 1) / (n + 2); // smoothed
+  const confidence = Math.min(1, n / 4);
+  return (rate - 0.5) * 5 * confidence;
 }
 
 export interface PlanStop {
@@ -203,6 +224,7 @@ function wantedKinds(req: PlanRequest): Set<Kind> {
 /** Score before travel, timing and variety are considered. */
 function baseScore(p: Place | FtEvent, req: PlanRequest, kinds: Set<Kind>, rainy: boolean): number | null {
   if (req.who === "kids" && p.adultsOnly) return null;
+  if (req.avoid?.includes(p.id)) return null;
   if (req.budget !== null && p.price !== null && p.price > req.budget) return null;
   // Places to eat are only a part of a plan, never all of it: they're picked as a meal stop.
   let s = kinds.size ? (kinds.has(p.kind) ? 3 : 0.3) : 1;
@@ -214,6 +236,8 @@ function baseScore(p: Place | FtEvent, req: PlanRequest, kinds: Set<Kind>, rainy
   if (p.url) s += 0.3;
   if (req.budget !== null && req.budget <= 10 && p.free) s += 0.7;
   if (p.kind === "other" || p.kind === "tour") s -= 0.5;
+  s += tasteBoost(req.taste, p.kind);
+  if (req.prefer?.includes(p.id)) s += 6;
   // Registered trails are the most reliable walks (length and difficulty are known).
   if (p.source === "sport-ireland-trails" && kinds.has("walk")) s += 0.8;
   return s;
@@ -365,7 +389,7 @@ function buildOne(pool: Candidate[], req: PlanRequest, town: Town, seed: number,
     if (!isEvent(c) || banned.has(c.id)) continue;
     const startAt = c.startTime ? toMin(c.startTime) : usualEventStart(c.kind);
     if (startAt === null || startAt < slotStart) continue;
-    if (kinds.size && !kinds.has(c.kind)) continue;
+    if (kinds.size && !kinds.has(c.kind) && !req.prefer?.includes(c.id)) continue;
     const t = fit(c, ctx, startAt - travel(c.distFromTown).minutes, home, slotEnd);
     if (!t) continue;
     const score = c.base - c.distFromTown / 8 + jitter(c.id, seed) * 1.2;
@@ -446,4 +470,99 @@ export function plan(
   }
   if (!plans.length) notes.push("Nothing fits this slot. Try a longer time, a wider area or different interests.");
   return { plans, weather, considered: pool.length, notes };
+}
+
+// ---------- swipe deck ----------
+
+export interface DeckCard {
+  id: string;
+  name: string;
+  kind: Kind;
+  source: Place["source"];
+  url: string | null;
+  county: string;
+  lat: number;
+  lng: number;
+  distanceKm: number;
+  price: number | null;
+  free: boolean;
+  indoor: boolean;
+  kidFriendly: boolean;
+  summary: string;
+  venue: string | null;
+  /** "8pm-ish", "Starts 19:30", "Open usual hours", … */
+  when: string;
+  event: boolean;
+  lengthKm?: number;
+  difficulty?: string;
+}
+
+/**
+ * Everything on near the chosen town that day, best first for this person, for
+ * swiping. Cards already swiped (`seen`) are left out.
+ */
+export function deck(req: PlanRequest, town: Town, places: Place[], events: FtEvent[], seen: Set<string>, limit = 40, seed = 1): DeckCard[] {
+  const kinds = wantedKinds(req);
+  const radius = Math.max(2, Math.min(req.radiusKm, 80));
+  const month = Number(req.date.slice(5, 7)) - 1;
+  const slotStart = toMin(req.start);
+  const slotEnd = toMin(req.end) <= slotStart ? toMin(req.end) + 24 * 60 : toMin(req.end);
+  const scored: { card: DeckCard; score: number }[] = [];
+  const add = (p: Place | FtEvent) => {
+    if (seen.has(p.id)) return;
+    if (p.kind === "food" && !req.interests.includes("food")) return;
+    const d = distanceKm(town.lat, town.lng, p.lat, p.lng);
+    if (d > radius) return;
+    const base = baseScore(p, req, kinds, false);
+    if (base === null) return;
+    // Only things you could actually do in the slot.
+    let when: string;
+    if (isEvent(p)) {
+      const start = p.startTime ? toMin(p.startTime) : usualEventStart(p.kind);
+      if (start !== null && (start < slotStart - 30 || start > slotEnd - 45)) return;
+      when = p.startTime ? `Starts ${p.startTime}` : start !== null ? `Usually around ${fmt(start)}` : "Daytime, times not listed";
+    } else {
+      const [open, close] = usualHours(p.kind, p.indoor, month);
+      if (Math.min(close, slotEnd) - Math.max(open, slotStart) < 45) return;
+      when = ["walk", "nature", "beach", "water"].includes(p.kind) ? "Any time in daylight" : `Usually open ${fmt(open)}–${fmt(close)}`;
+    }
+    const score = base - d / 10 + jitter(p.id, seed) * 1.5;
+    scored.push({
+      score,
+      card: {
+        id: p.id,
+        name: p.name,
+        kind: p.kind,
+        source: p.source,
+        url: p.url,
+        county: p.county,
+        lat: p.lat,
+        lng: p.lng,
+        distanceKm: Math.round(d * 10) / 10,
+        price: p.price,
+        free: p.free,
+        indoor: p.indoor,
+        kidFriendly: p.kidFriendly,
+        summary: p.summary,
+        venue: isEvent(p) ? p.venue : null,
+        when,
+        event: isEvent(p),
+        lengthKm: p.lengthKm,
+        difficulty: p.difficulty,
+      },
+    });
+  };
+  for (const p of places) add(p);
+  for (const e of events) if (e.startDate <= req.date && req.date <= e.endDate) add(e);
+  scored.sort((a, b) => b.score - a.score || a.card.id.localeCompare(b.card.id));
+  // Mix it up: don't show more than three of one kind in a row near the top.
+  const out: DeckCard[] = [];
+  const rest: DeckCard[] = [];
+  for (const { card } of scored) {
+    const last3 = out.slice(-3);
+    if (last3.length === 3 && last3.every((c) => c.kind === card.kind)) rest.push(card);
+    else out.push(card);
+    if (out.length >= limit) break;
+  }
+  return [...out, ...rest].slice(0, limit);
 }

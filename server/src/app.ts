@@ -20,9 +20,9 @@ import {
 } from "./service.js";
 import type { Store } from "./store.js";
 import { FreeTimeService } from "./freetime/service.js";
-import { INTERESTS } from "./freetime/planner.js";
+import { INTERESTS, type Taste } from "./freetime/planner.js";
 import { TOWNS, townById } from "./freetime/towns.js";
-import { DEADLINE_KINDS, DRAFT_KINDS, type User } from "./types.js";
+import { DEADLINE_KINDS, DRAFT_KINDS, type FreeTimeTaste, type User } from "./types.js";
 import { newId } from "./util.js";
 import { todayIso } from "./util.js";
 
@@ -402,15 +402,115 @@ export function createApp({ store, ai, inboundSecret, webDist, now = () => new D
     interests: z.array(z.enum(INTERESTS)).max(INTERESTS.length).default([]),
   });
 
+  const tasteOf = (userId: string): FreeTimeTaste =>
+    store.data.freeTimeTaste?.find((t) => t.userId === userId) ?? { userId, kinds: {}, liked: [], passed: [] };
+  const tasteView = (t: FreeTimeTaste) => ({ kinds: t.kinds, liked: t.liked });
+
   app.post(
     "/api/freetime/plan",
     auth,
     h(async (req, res) => {
+      const body = parse(PlanBody.extend({ usePicks: z.boolean().optional() }), req.body);
+      const town = townById(body.near);
+      if (!town) throw new HttpError(400, "Choose a town from the list.");
+      const t = tasteOf(req.user!.id);
+      const result = await freeTime.plan(
+        {
+          ...body,
+          taste: t.kinds as Taste,
+          avoid: t.passed.map((p) => p.id),
+          prefer: body.usePicks ? t.liked.filter((l) => l.date === body.date).map((l) => l.id) : undefined,
+        },
+        town,
+      );
+      res.json({ ...result, town, ...freeTime.status() });
+    }),
+  );
+
+  // Swipe deck: everything on that day near the town, best first for this person.
+  app.post(
+    "/api/freetime/deck",
+    auth,
+    h((req, res) => {
       const body = parse(PlanBody, req.body);
       const town = townById(body.near);
       if (!town) throw new HttpError(400, "Choose a town from the list.");
-      const result = await freeTime.plan(body, town);
-      res.json({ ...result, town, ...freeTime.status() });
+      const t = tasteOf(req.user!.id);
+      const seen = new Set([...t.passed.map((p) => p.id), ...t.liked.filter((l) => l.date === body.date).map((l) => l.id)]);
+      res.json({ cards: freeTime.deck({ ...body, taste: t.kinds as Taste }, town, seen), ...tasteView(t) });
+    }),
+  );
+
+  app.post(
+    "/api/freetime/swipe",
+    auth,
+    h((req, res) => {
+      const body = parse(
+        z.object({
+          liked: z.boolean(),
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          card: z.object({ id: z.string().max(80), kind: z.string().max(20) }).passthrough(),
+        }),
+        req.body,
+      );
+      const t = store.mutate((db) => {
+        db.freeTimeTaste ??= [];
+        let t = db.freeTimeTaste.find((x) => x.userId === req.user!.id);
+        if (!t) db.freeTimeTaste.push((t = { userId: req.user!.id, kinds: {}, liked: [], passed: [] }));
+        const k = (t.kinds[body.card.kind] ??= { like: 0, pass: 0 });
+        if (body.liked) {
+          k.like++;
+          t.liked = [...t.liked.filter((l) => !(l.id === body.card.id && l.date === body.date)), { ...body.card, date: body.date, likedAt: now().toISOString() }].slice(-100);
+        } else {
+          k.pass++;
+          t.passed = [...t.passed.filter((p) => p.id !== body.card.id), { id: body.card.id, kind: body.card.kind }].slice(-500);
+        }
+        return t;
+      });
+      res.json(tasteView(t));
+    }),
+  );
+
+  // Undo a swipe (the last one, or removing a pick).
+  app.delete(
+    "/api/freetime/swipe/:id",
+    auth,
+    h((req, res) => {
+      const date = typeof req.query.date === "string" ? req.query.date : null;
+      const t = store.mutate((db) => {
+        const t = db.freeTimeTaste?.find((x) => x.userId === req.user!.id);
+        if (!t) return { userId: req.user!.id, kinds: {}, liked: [], passed: [] } as FreeTimeTaste;
+        const liked = t.liked.find((l) => l.id === req.params.id && (!date || l.date === date));
+        const passed = t.passed.find((p) => p.id === req.params.id);
+        if (liked) {
+          t.liked = t.liked.filter((l) => l !== liked);
+          if (t.kinds[liked.kind]) t.kinds[liked.kind].like = Math.max(0, t.kinds[liked.kind].like - 1);
+        } else if (passed) {
+          t.passed = t.passed.filter((p) => p !== passed);
+          if (t.kinds[passed.kind]) t.kinds[passed.kind].pass = Math.max(0, t.kinds[passed.kind].pass - 1);
+        }
+        return t;
+      });
+      res.json(tasteView(t));
+    }),
+  );
+
+  app.get(
+    "/api/freetime/taste",
+    auth,
+    h((req, res) => {
+      res.json(tasteView(tasteOf(req.user!.id)));
+    }),
+  );
+
+  app.delete(
+    "/api/freetime/taste",
+    auth,
+    h((req, res) => {
+      store.mutate((db) => {
+        db.freeTimeTaste = (db.freeTimeTaste ?? []).filter((t) => t.userId !== req.user!.id);
+      });
+      res.json({ kinds: {}, liked: [] });
     }),
   );
 

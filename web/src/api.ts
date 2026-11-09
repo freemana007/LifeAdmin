@@ -101,11 +101,19 @@ export function setToken(token: string | null) {
 }
 
 import { ApiError } from "./apiError";
-import type { Interest, PlanRequest, PlanResult, Plan, PlanStop } from "../../server/src/freetime/planner";
+import type { DeckCard, Interest, PlanRequest, PlanResult, Plan, PlanStop } from "../../server/src/freetime/planner";
 import type { Town } from "../../server/src/freetime/towns";
 import type { SourceStatus } from "../../server/src/freetime/types";
 
-export type { Interest, Plan, PlanStop, Town, SourceStatus };
+export type { DeckCard, Interest, Plan, PlanStop, Town, SourceStatus };
+
+/** What someone has swiped: counts per kind, plus the cards they liked (with the day). */
+export interface TasteState {
+  kinds: Record<string, { like: number; pass: number }>;
+  liked: (DeckCard & { date: string; likedAt: string })[];
+}
+
+export type PlanBody = PlanRequest & { near: string };
 
 export interface FreeTimeMeta {
   towns: Town[];
@@ -163,7 +171,12 @@ const httpApi = {
   deleteDocument: (id: string) => call<void>("DELETE", `/documents/${id}`),
   draft: (id: string, kind: DraftKind, note?: string) => call<Draft>("POST", `/documents/${id}/drafts`, { kind, note }),
   freeTimeMeta: () => call<FreeTimeMeta>("GET", "/freetime/meta"),
-  planFreeTime: (req: PlanRequest & { near: string }) => call<FreeTimeResult>("POST", "/freetime/plan", req),
+  planFreeTime: (req: PlanBody & { usePicks?: boolean }) => call<FreeTimeResult>("POST", "/freetime/plan", req),
+  freeTimeDeck: (req: PlanBody) => call<TasteState & { cards: DeckCard[] }>("POST", "/freetime/deck", req),
+  swipe: (card: DeckCard, liked: boolean, date: string) => call<TasteState>("POST", "/freetime/swipe", { card, liked, date }),
+  unswipe: (id: string, date?: string) => call<TasteState>("DELETE", `/freetime/swipe/${encodeURIComponent(id)}${date ? `?date=${date}` : ""}`),
+  taste: () => call<TasteState>("GET", "/freetime/taste"),
+  resetTaste: () => call<TasteState>("DELETE", "/freetime/taste"),
   savedPlans: () => call<SavedPlan[]>("GET", "/freetime/plans"),
   savePlan: (p: Omit<SavedPlan, "id" | "createdAt">) => call<SavedPlan>("POST", "/freetime/plans", p),
   deletePlan: (id: string) => call<void>("DELETE", `/freetime/plans/${id}`),

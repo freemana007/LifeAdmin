@@ -23,8 +23,16 @@ export interface StoredPlan {
   stops: { name: string; kind: string; start: string; end: string; url: string | null; venue: string | null; lat: number; lng: number }[];
 }
 
+export interface StoredTaste {
+  kinds: Record<string, { like: number; pass: number }>;
+  liked: (Record<string, unknown> & { id: string; kind: string; date: string; likedAt: string })[];
+  passed: { id: string; kind: string }[];
+}
+
 export interface Backend {
   readonly kind: "account" | "device";
+  getTaste(): Promise<StoredTaste | null>;
+  putTaste(t: StoredTaste): Promise<void>;
   listPlans(): Promise<StoredPlan[]>;
   putPlan(p: StoredPlan): Promise<void>;
   deletePlan(id: string): Promise<void>;
@@ -87,7 +95,7 @@ function notice(message: string) {
 /** This browser only. Every access is guarded; private windows can refuse storage. */
 class DeviceBackend implements Backend {
   readonly kind = "device" as const;
-  private mem: { profile: Profile | null; docs: Record<string, StoredDoc>; plans?: Record<string, StoredPlan> } = { profile: null, docs: {} };
+  private mem: { profile: Profile | null; docs: Record<string, StoredDoc>; plans?: Record<string, StoredPlan>; taste?: StoredTaste } = { profile: null, docs: {} };
 
   constructor() {
     try {
@@ -124,6 +132,13 @@ class DeviceBackend implements Backend {
   }
   async listPlans() {
     return clone(Object.values(this.mem.plans ?? {}));
+  }
+  async getTaste() {
+    return clone(this.mem.taste ?? null);
+  }
+  async putTaste(t: StoredTaste) {
+    this.mem.taste = clone(t);
+    this.save();
   }
   async putPlan(p: StoredPlan) {
     (this.mem.plans ??= {})[p.id] = clone(p);
@@ -200,6 +215,13 @@ class AccountBackend implements Backend {
   deleteDoc(id: string) {
     return this.enqueue(`doc-${id}`, () => this.col.doc(`doc-${id}`).delete());
   }
+  async getTaste() {
+    const snap = await this.col.doc("taste").get();
+    return snap.exists ? clone(snap.data() as unknown as StoredTaste) : null;
+  }
+  putTaste(t: StoredTaste) {
+    return this.enqueue("taste", () => this.col.doc("taste").set(clone(t) as unknown as Record<string, unknown>));
+  }
   async listPlans() {
     const snap = await this.col.get();
     return snap.docs.filter((d) => d.id.startsWith("plan-")).map((d) => clone(d.data() as unknown as StoredPlan));
@@ -236,6 +258,8 @@ class SyncedBackend implements Backend {
     const have = new Set((await device.listDocs()).map((d) => d.document.id));
     for (const d of docs) if (!have.has(d.document.id)) await device.putDoc(d);
     for (const p of await this.account.listPlans().catch(() => [])) await device.putPlan(p);
+    const taste = await this.account.getTaste().catch(() => null);
+    if (taste && !(await device.getTaste())) await device.putTaste(taste);
     this.device = device;
     writeMode("device");
     notice(reason);
@@ -253,6 +277,8 @@ class SyncedBackend implements Backend {
       await this.account.putProfile(profile);
       for (const d of await device.listDocs()) await this.account.putDoc(d);
       for (const p of await device.listPlans()) await this.account.putPlan(p);
+      const taste = await device.getTaste();
+      if (taste) await this.account.putTaste(taste);
       device.clear();
       writeMode(null);
       return true;
@@ -292,6 +318,12 @@ class SyncedBackend implements Backend {
   }
   listPlans() {
     return (this.device ?? this.account).listPlans();
+  }
+  getTaste() {
+    return (this.device ?? this.account).getTaste();
+  }
+  putTaste(t: StoredTaste) {
+    return this.write((b) => b.putTaste(t));
   }
   putPlan(p: StoredPlan) {
     return this.write((b) => b.putPlan(p));

@@ -541,3 +541,52 @@ details.more > .more-body { padding: 0 var(--s-4) var(--s-4); }
 .weekend-nudge > .icon { color: var(--ink-3); }
 .choice:not([class*="cat-"]) { background: var(--surface-2); color: var(--ink); }
 .choice:not([class*="cat-"]).on { background: var(--brand); color: var(--brand-ink); }
+
+/* ---------- Swipe deck ---------- */
+.ft-go { display: grid; gap: var(--s-2); }
+.deck { display: grid; gap: var(--s-4); outline: none; }
+.deck:focus-visible { outline: 3px solid var(--focus); outline-offset: 6px; border-radius: 28px; }
+.deck-stack { position: relative; height: 430px; }
+.swipe-card {
+  position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: 28px;
+  background: var(--surface); box-shadow: var(--shadow-2); touch-action: pan-y; user-select: none; will-change: transform;
+}
+.swipe-card.is-top { cursor: grab; box-shadow: var(--shadow-3); }
+.swipe-card.is-top:active { cursor: grabbing; }
+.swipe-band { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-5) var(--s-4) var(--s-4); background: var(--cat-bg); color: var(--cat-on); min-height: 96px; align-items: flex-end; }
+.swipe-band .kind { color: inherit; font-size: var(--t-sm); }
+.swipe-body { flex: 1; display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-4); min-height: 0; }
+.swipe-body h3 { font-size: 1.5rem; line-height: 1.15; overflow-wrap: anywhere; }
+.swipe-when, .swipe-meta { display: flex; align-items: center; gap: 6px; font-weight: 650; color: var(--ink-2); font-size: var(--t-sm); }
+.swipe-meta span { display: inline-flex; gap: 6px; align-items: center; }
+.swipe-when .icon, .swipe-meta .icon { color: var(--cat); flex: none; }
+.swipe-summary { color: var(--ink-2); font-size: var(--t-sm); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.swipe-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+.tag { font-size: var(--t-xs); font-weight: 750; padding: 3px 10px; border-radius: var(--r-pill); background: var(--cat-soft); color: var(--cat); }
+.tag-quiet { background: var(--surface-2); color: var(--ink-2); }
+.swipe-link { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; min-height: 32px; }
+.stamp-like, .stamp-nope {
+  position: absolute; top: 28px; z-index: 2; padding: 4px 14px; border-radius: 10px; border: 4px solid; font-family: var(--font-display); font-weight: 800; font-size: 1.75rem; letter-spacing: 0.06em; pointer-events: none; background: rgba(255, 255, 255, 0.9);
+}
+.stamp-like { left: 20px; color: #187a55; border-color: #187a55; transform: rotate(-14deg); }
+.stamp-nope { right: 20px; color: #b3261e; border-color: #b3261e; transform: rotate(14deg); }
+.deck-actions { display: flex; justify-content: center; align-items: center; gap: var(--s-5); }
+.deck-btn { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; border: 0; background: var(--surface); box-shadow: var(--shadow-2); cursor: pointer; transition: transform var(--dur-fast) var(--ease); }
+.deck-btn:active { transform: scale(0.92); }
+.deck-btn:disabled { opacity: 0.4; cursor: default; }
+.deck-nope { color: var(--alert); }
+.deck-like { color: var(--other-bg); }
+.deck-undo { width: 48px; height: 48px; color: var(--ink-2); }
+.taste { display: grid; gap: var(--s-3); }
+.taste-row { display: grid; gap: 6px; }
+.tag-taste { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-sm); font-weight: 700; padding: 4px 12px; border-radius: var(--r-pill); background: var(--cat-soft); color: var(--cat); }
+.tag-taste .icon { color: var(--cat-bg); fill: currentColor; }
+.tag-nope { background: var(--surface-2); color: var(--ink-2); }
+.taste-count { font-variant-numeric: tabular-nums; opacity: 0.75; font-weight: 600; }
+.picks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
+.picks li { display: flex; align-items: center; gap: var(--s-3); }
+.picks .grow { flex: 1; min-width: 0; display: grid; }
+.deck-like .icon { fill: currentColor; }
+@media (prefers-reduced-motion: reduce) { .swipe-card { transition: none !important; } }
+.swipe-body h3 { overflow-wrap: break-word; hyphens: auto; }
+#ft-deck { overflow-x: clip; }

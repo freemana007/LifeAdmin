@@ -11,10 +11,17 @@ import { ApiError } from "../apiError";
 import { SAMPLES } from "../samples";
 import { runtime } from "./runtime";
 import { getBackend, type Profile, type StoredDoc } from "./storage";
-import { plan as planFreeTime, INTERESTS, type PlanRequest } from "../../../server/src/freetime/planner";
+import { deck as dealDeck, plan as planFreeTime, INTERESTS, type DeckCard, type PlanRequest, type Taste } from "../../../server/src/freetime/planner";
 import { townById, TOWNS } from "../../../server/src/freetime/towns";
 import type { Dataset } from "../../../server/src/freetime/types";
-import type { FreeTimeMeta, FreeTimeResult, SavedPlan } from "../api";
+import type { FreeTimeMeta, FreeTimeResult, SavedPlan, TasteState } from "../api";
+import type { StoredTaste } from "./storage";
+
+const EMPTY_TASTE: StoredTaste = { kinds: {}, liked: [], passed: [] };
+async function readTaste(): Promise<StoredTaste> {
+  return (await (await getBackend()).getTaste()) ?? { ...EMPTY_TASTE, kinds: {}, liked: [], passed: [] };
+}
+const tasteView = (t: StoredTaste): TasteState => ({ kinds: t.kinds, liked: t.liked as unknown as TasteState["liked"] });
 
 // Free time listings: a dated snapshot of the open data, published next to the page.
 let dataset: Promise<Dataset> | null = null;
@@ -399,11 +406,64 @@ Reply with only JSON: {"subject":"...","body":"...","to":"email address from the
     return { towns: TOWNS, interests: [...INTERESTS], generatedAt: d.generatedAt, sources: d.sources, snapshot: true };
   },
 
-  async planFreeTime(req: PlanRequest & { near: string }): Promise<FreeTimeResult> {
+  async planFreeTime(req: PlanRequest & { near: string; usePicks?: boolean }): Promise<FreeTimeResult> {
     const town = townById(req.near);
     if (!town) throw new ApiError(400, "Choose a town from the list.");
-    const d = await loadDataset();
-    return { ...planFreeTime(req, town, d.places, d.events, null), town, generatedAt: d.generatedAt, sources: d.sources };
+    const [d, t] = await Promise.all([loadDataset(), readTaste()]);
+    const full: PlanRequest = {
+      ...req,
+      taste: t.kinds as Taste,
+      avoid: t.passed.map((p) => p.id),
+      prefer: req.usePicks ? t.liked.filter((l) => l.date === req.date).map((l) => l.id) : undefined,
+    };
+    return { ...planFreeTime(full, town, d.places, d.events, null), town, generatedAt: d.generatedAt, sources: d.sources };
+  },
+
+  async freeTimeDeck(req: PlanRequest & { near: string }) {
+    const town = townById(req.near);
+    if (!town) throw new ApiError(400, "Choose a town from the list.");
+    const [d, t] = await Promise.all([loadDataset(), readTaste()]);
+    const seen = new Set([...t.passed.map((p) => p.id), ...t.liked.filter((l) => l.date === req.date).map((l) => l.id)]);
+    return { cards: dealDeck({ ...req, taste: t.kinds as Taste }, town, d.places, d.events, seen), ...tasteView(t) };
+  },
+
+  async swipe(card: DeckCard, liked: boolean, date: string): Promise<TasteState> {
+    await profileOrThrow();
+    const t = await readTaste();
+    const k = (t.kinds[card.kind] ??= { like: 0, pass: 0 });
+    if (liked) {
+      k.like++;
+      t.liked = [...t.liked.filter((l) => !(l.id === card.id && l.date === date)), { ...card, date, likedAt: new Date().toISOString() }].slice(-100);
+    } else {
+      k.pass++;
+      t.passed = [...t.passed.filter((p) => p.id !== card.id), { id: card.id, kind: card.kind }].slice(-500);
+    }
+    await (await getBackend()).putTaste(t);
+    return tasteView(t);
+  },
+
+  async unswipe(id: string, date?: string): Promise<TasteState> {
+    const t = await readTaste();
+    const liked = t.liked.find((l) => l.id === id && (!date || l.date === date));
+    const passed = t.passed.find((p) => p.id === id);
+    if (liked) {
+      t.liked = t.liked.filter((l) => l !== liked);
+      if (t.kinds[liked.kind]) t.kinds[liked.kind].like = Math.max(0, t.kinds[liked.kind].like - 1);
+    } else if (passed) {
+      t.passed = t.passed.filter((p) => p !== passed);
+      if (t.kinds[passed.kind]) t.kinds[passed.kind].pass = Math.max(0, t.kinds[passed.kind].pass - 1);
+    }
+    await (await getBackend()).putTaste(t);
+    return tasteView(t);
+  },
+
+  async taste(): Promise<TasteState> {
+    return tasteView(await readTaste());
+  },
+
+  async resetTaste(): Promise<TasteState> {
+    await (await getBackend()).putTaste({ kinds: {}, liked: [], passed: [] });
+    return { kinds: {}, liked: [] };
   },
 
   async savedPlans(): Promise<SavedPlan[]> {

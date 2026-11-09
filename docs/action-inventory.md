@@ -42,6 +42,10 @@ After every action the suite also checks: no page errors, no unhandled promise r
 | Document | Delete → wait | Gone, also after reload | both |
 | Document | Back | Returns to where you came from (Timeline, Library, Add) | both |
 | Free time | Pick day, times, town, who, interests → Plan my free time | A timed itinerary from Irish open data, with travel legs, links and credits | both |
+| Free time | Swipe through what's on: drag right / ♥ / → to like, drag left / ✕ / ← to pass, Undo | Cards for that day and area; likes go to "Your picks"; taste by kind remembered | both |
+| Free time | Reload | Taste ("You like / Less keen on") and picks are still there | both |
+| Free time | Plan with my picks | The plan includes the liked items; passed items never appear | both |
+| Free time | Reset taste | Swipes forgotten | both |
 | Free time | Show another plan | Plan 2 of n | both |
 | Free time | Save plan → reload → delete | Saved plan listed after reload; deleted on request (also in the calendar feed in the full app) | both |
 | Free time | With kids | Never includes pubs or clubs | both |

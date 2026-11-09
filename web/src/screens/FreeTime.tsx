@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type FreeTimeMeta, type FreeTimeResult, type Interest, type Plan, type PlanStop, type SavedPlan } from "../api";
+import { api, type DeckCard, type FreeTimeMeta, type FreeTimeResult, type Interest, type Plan, type PlanStop, type SavedPlan, type TasteState } from "../api";
 import type { View } from "../App";
 import type { Category } from "../format";
 import { EmptyState, ProviderBadge } from "../ui/bits";
@@ -8,6 +8,7 @@ import { Icon, type IconName } from "../ui/Icon";
 import { useToast } from "../ui/Toast";
 import { useAction } from "../ui/useAction";
 import { CaughtUpArt } from "../illustrations";
+import { SwipeDeck } from "../ui/SwipeDeck";
 
 type Who = "solo" | "couple" | "kids" | "friends";
 
@@ -104,8 +105,71 @@ export function FreeTime({ initialDate }: { go: (v: View) => void; initialDate?:
   const [which, setWhich] = useState(0);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<SavedPlan[]>([]);
+  const [taste, setTaste] = useState<TasteState>({ kinds: {}, liked: [] });
+  const [cards, setCards] = useState<DeckCard[] | null>(null);
+  const [history, setHistory] = useState<{ card: DeckCard; liked: boolean }[]>([]);
+  const [confirmReset, setConfirmReset] = useState(false);
   const act = useAction();
   const toast = useToast();
+
+  useEffect(() => {
+    api.taste().then(setTaste, () => {});
+  }, []);
+
+  async function startDeck() {
+    setBusy(true);
+    setResult(null);
+    const r = await act(() => api.freeTimeDeck({ ...prefs, date }), { retry: () => void startDeck() });
+    setBusy(false);
+    if (r) {
+      setCards(r.cards);
+      setTaste({ kinds: r.kinds, liked: r.liked });
+      setHistory([]);
+      requestAnimationFrame(() => document.getElementById("ft-deck")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }
+
+  async function onSwipe(card: DeckCard, liked: boolean) {
+    setCards((cs) => cs?.filter((c) => c.id !== card.id) ?? null);
+    setHistory((h) => [...h, { card, liked }]);
+    const t = await act(() => api.swipe(card, liked, date), {
+      rollback: () => {
+        setCards((cs) => [card, ...(cs ?? [])]);
+        setHistory((h) => h.filter((x) => x.card.id !== card.id));
+      },
+      retry: () => void onSwipe(card, liked),
+    });
+    if (t) setTaste(t);
+  }
+
+  async function undoSwipe() {
+    const last = history[history.length - 1];
+    if (!last) return;
+    setHistory((h) => h.slice(0, -1));
+    setCards((cs) => [last.card, ...(cs ?? [])]);
+    const t = await act(() => api.unswipe(last.card.id, date), {
+      rollback: () => {
+        setHistory((h) => [...h, last]);
+        setCards((cs) => cs?.filter((c) => c.id !== last.card.id) ?? null);
+      },
+    });
+    if (t) setTaste(t);
+  }
+
+  async function removePick(id: string) {
+    const t = await act(() => api.unswipe(id, date));
+    if (t) setTaste(t);
+  }
+
+  async function resetTaste() {
+    const t = await act(() => api.resetTaste());
+    if (t) {
+      setTaste(t);
+      setConfirmReset(false);
+      setCards(null);
+      toast({ message: "Your taste has been reset." });
+    }
+  }
 
   const loadMeta = () => {
     setMetaError(null);
@@ -127,9 +191,9 @@ export function FreeTime({ initialDate }: { go: (v: View) => void; initialDate?:
       return next;
     });
 
-  async function makePlan() {
+  async function makePlan(usePicks = false) {
     setBusy(true);
-    const r = await act(() => api.planFreeTime({ ...prefs, date }), { retry: () => void makePlan() });
+    const r = await act(() => api.planFreeTime({ ...prefs, date, usePicks }), { retry: () => void makePlan(usePicks) });
     setBusy(false);
     if (r) {
       setResult(r);
@@ -288,10 +352,53 @@ export function FreeTime({ initialDate }: { go: (v: View) => void; initialDate?:
           <span className="hint">Pick none for a bit of everything.</span>
         </fieldset>
 
-        <Button variant="primary" size="lg" block icon="sun" disabled={busy || !meta}>
-          {busy ? "Planning…" : "Plan my free time"}
-        </Button>
+        <div className="ft-go">
+          <Button type="button" variant="primary" size="lg" block icon="heart" disabled={busy || !meta} onClick={() => void startDeck()}>
+            Swipe through what's on
+          </Button>
+          <Button variant="secondary" size="lg" block icon="sun" disabled={busy || !meta}>
+            {busy ? "Working…" : "Just plan it for me"}
+          </Button>
+        </div>
       </form>
+
+      <TasteSummary taste={taste} confirming={confirmReset} onAskReset={() => setConfirmReset(true)} onCancel={() => setConfirmReset(false)} onReset={() => void resetTaste()} />
+
+      {cards && (
+        <section id="ft-deck" className="stack" aria-labelledby="ft-deck-title">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h2 id="ft-deck-title" className="ft-plan-title">
+              What's on near {towns.find((t) => t.id === prefs.near)?.name ?? "you"}
+            </h2>
+            <span className="small muted">{cards.length} left</span>
+          </div>
+          <p className="small muted">Swipe right for yes, left for no. We'll remember what you like.</p>
+          {cards.length ? (
+            <SwipeDeck
+              cards={cards}
+              catOf={(k) => KIND_CAT[k] ?? "other"}
+              labelOf={(k) => KIND_LABEL[k] ?? "Visit"}
+              onSwipe={(c, liked) => void onSwipe(c, liked)}
+              onUndo={() => void undoSwipe()}
+              canUndo={history.length > 0}
+            />
+          ) : (
+            <div className="card">
+              <EmptyState art={<CaughtUpArt />} title="That's everything for this slot">
+                <p>Try another day, a wider area, or plan with what you liked.</p>
+              </EmptyState>
+              {history.length > 0 && (
+                <div className="row" style={{ justifyContent: "center" }}>
+                  <Button variant="ghost" icon="undo" onClick={() => void undoSwipe()}>
+                    Undo last swipe
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          <Picks picks={taste.liked.filter((l) => l.date === date)} onRemove={(id) => void removePick(id)} onPlan={() => void makePlan(true)} busy={busy} />
+        </section>
+      )}
 
       {result && (
         <section id="ft-results" className="stack" aria-live="polite">
@@ -445,5 +552,93 @@ function Stop({ s, first }: { s: PlanStop; first: boolean }) {
         </div>
       </div>
     </li>
+  );
+}
+
+function TasteSummary({ taste, confirming, onAskReset, onCancel, onReset }: { taste: TasteState; confirming: boolean; onAskReset: () => void; onCancel: () => void; onReset: () => void }) {
+  const entries = Object.entries(taste.kinds).filter(([, v]) => v.like + v.pass > 0);
+  if (!entries.length) return null;
+  const rate = (v: { like: number; pass: number }) => (v.like + 1) / (v.like + v.pass + 2);
+  const likes = entries.filter(([, v]) => v.like > 0 && rate(v) > 0.5).sort((a, b) => rate(b[1]) - rate(a[1]) || b[1].like - a[1].like);
+  const nopes = entries.filter(([, v]) => v.pass > v.like).sort((a, b) => b[1].pass - a[1].pass);
+  return (
+    <section className="card taste" aria-labelledby="taste-title">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2 id="taste-title" className="card-title">
+          Your taste
+        </h2>
+        {confirming ? (
+          <span className="row">
+            <span className="small">Forget everything you've swiped?</span>
+            <Button size="sm" variant="danger" onClick={onReset}>
+              Reset
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onCancel}>
+              Keep
+            </Button>
+          </span>
+        ) : (
+          <button className="link small" onClick={onAskReset}>
+            Reset
+          </button>
+        )}
+      </div>
+      {likes.length > 0 && (
+        <div className="taste-row">
+          <span className="small muted">You like</span>
+          <span className="choice-chips">
+            {likes.map(([k, v]) => (
+              <span key={k} className={`tag-taste cat-${KIND_CAT[k] ?? "other"}`}>
+                <Icon name="heart" size={14} />
+                {KIND_LABEL[k] ?? k} <span className="taste-count">{v.like}</span>
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+      {nopes.length > 0 && (
+        <div className="taste-row">
+          <span className="small muted">Less keen on</span>
+          <span className="choice-chips">
+            {nopes.map(([k, v]) => (
+              <span key={k} className="tag-taste tag-nope">
+                {KIND_LABEL[k] ?? k} <span className="taste-count">{v.pass}</span>
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+      <p className="hint">Your swipes shape what you see first and how plans are put together.</p>
+    </section>
+  );
+}
+
+function Picks({ picks, onRemove, onPlan, busy }: { picks: (DeckCard & { date: string })[]; onRemove: (id: string) => void; onPlan: () => void; busy: boolean }) {
+  if (!picks.length) return null;
+  return (
+    <section className="card stack" aria-labelledby="picks-title">
+      <h2 id="picks-title" className="card-title">
+        Your picks for this day ({picks.length})
+      </h2>
+      <ul className="picks">
+        {picks.map((p) => (
+          <li key={p.id} className={`cat-${KIND_CAT[p.kind] ?? "other"}`}>
+            <ProviderBadge name={p.name} cat={KIND_CAT[p.kind] ?? "other"} size="sm" />
+            <span className="grow">
+              <strong>{p.name}</strong>
+              <span className="small muted">
+                {KIND_LABEL[p.kind] ?? "Visit"} · {p.when}
+              </span>
+            </span>
+            <button className="icon-btn" aria-label={`Remove ${p.name} from your picks`} onClick={() => onRemove(p.id)}>
+              <Icon name="close" size={18} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <Button variant="primary" icon="sun" disabled={busy} onClick={onPlan}>
+        Plan with my picks
+      </Button>
+    </section>
   );
 }

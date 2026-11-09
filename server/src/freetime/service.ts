@@ -4,7 +4,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { buildDataset, SOURCE_INFO } from "./ingest.js";
-import { plan, type PlanRequest, type PlanResult } from "./planner.js";
+import { deck, plan, type DeckCard, type PlanRequest, type PlanResult } from "./planner.js";
 import { fetchForecast } from "./sources/metEireann.js";
 import type { Town } from "./towns.js";
 import type { Dataset, Forecast, SourceStatus } from "./types.js";
@@ -85,6 +85,10 @@ export class FreeTimeService {
       this.metStatus = { ...this.metStatus, ok: false, error: (e as Error).message };
       return null;
     }
+  }
+
+  deck(req: PlanRequest, town: Town, seen: Set<string>): DeckCard[] {
+    return deck(req, town, this.data.places, this.data.events, seen);
   }
 
   async plan(req: PlanRequest, town: Town): Promise<PlanResult> {

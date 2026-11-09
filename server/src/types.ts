@@ -117,6 +117,16 @@ export interface Draft {
   engine: "claude" | "heuristic";
 }
 
+export interface FreeTimeTaste {
+  userId: string;
+  /** Likes and passes per kind of outing (walk, gig, pub, …). */
+  kinds: Record<string, { like: number; pass: number }>;
+  /** Cards swiped right, newest last (kept to the latest 100). */
+  liked: (Record<string, unknown> & { id: string; kind: string; date: string; likedAt: string })[];
+  /** Ids swiped left (kept to the latest 500). */
+  passed: { id: string; kind: string }[];
+}
+
 export interface SavedPlan {
   id: string;
   householdId: string;
@@ -134,6 +144,8 @@ export interface Database {
   documents: LifeDocument[];
   deadlines: Deadline[];
   remindersSent: { deadlineId: string; offsetDays: number; sentAt: string }[];
+  /** Each person's swipes in Free time: taste by kind, and what they liked. */
+  freeTimeTaste?: FreeTimeTaste[];
   /** Plans from the Free time tab that a household kept. */
   freeTimePlans?: SavedPlan[];
   /** One digest per person per day (calm notification budget). */
