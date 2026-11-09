@@ -41,6 +41,11 @@ After every action the suite also checks: no page errors, no unhandled promise r
 | Document | Delete → Undo | Document kept | both |
 | Document | Delete → wait | Gone, also after reload | both |
 | Document | Back | Returns to where you came from (Timeline, Library, Add) | both |
+| Free time | Pick day, times, town, who, interests → Plan my free time | A timed itinerary from Irish open data, with travel legs, links and credits | both |
+| Free time | Show another plan | Plan 2 of n | both |
+| Free time | Save plan → reload → delete | Saved plan listed after reload; deleted on request (also in the calendar feed in the full app) | both |
+| Free time | With kids | Never includes pubs or clubs | both |
+| Timeline | "Nothing due this weekend" nudge | Opens Free time for Saturday | both |
 | Library | Search | Filters; "Nothing matches" when empty | both |
 | Household | Rename household | Saved after reload | both |
 | Household | Try Premium / Switch to Free | Plan badge changes | both |

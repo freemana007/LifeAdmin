@@ -158,6 +158,16 @@ export function TimelineScreen({ me, go, hidden, onAbout }: { me: Me; go: (v: Vi
   const showChecklist = !checklistHidden && !checklist.every((c) => c.done);
   const priceFlags = docs.filter((d) => !hidden.has(d.id) && hasPriceRise(d)).length;
   const monthDone = view.thisMonth.filter((d) => d.done).length;
+  // The coming weekend, if nothing open is due on it.
+  const weekend = (() => {
+    const t = new Date(`${view.today}T12:00:00Z`);
+    const sat = new Date(t);
+    sat.setUTCDate(t.getUTCDate() + ((6 - t.getUTCDay() + 7) % 7));
+    const sun = new Date(sat);
+    sun.setUTCDate(sat.getUTCDate() + 1);
+    const ids = [sat, sun].map((d) => d.toISOString().slice(0, 10));
+    return view.open.some((d) => ids.includes(d.date.value)) ? null : { sat: ids[0] };
+  })();
 
   return (
     <section className="stack">
@@ -221,6 +231,19 @@ export function TimelineScreen({ me, go, hidden, onAbout }: { me: Me; go: (v: Vi
             </div>
           </div>
         </div>
+      )}
+
+      {weekend && (
+        <button className="weekend-nudge" onClick={() => go({ name: "freetime", date: weekend.sat })}>
+          <span className="tile">
+            <Icon name="sun" />
+          </span>
+          <span className="grow">
+            <strong>Nothing due this weekend</strong>
+            <span className="small muted">Plan some free time: walks, gigs and days out near you.</span>
+          </span>
+          <Icon name="chevron" />
+        </button>
       )}
 
       {view.toCheck.length > 0 && (

@@ -101,6 +101,31 @@ export function setToken(token: string | null) {
 }
 
 import { ApiError } from "./apiError";
+import type { Interest, PlanRequest, PlanResult, Plan, PlanStop } from "../../server/src/freetime/planner";
+import type { Town } from "../../server/src/freetime/towns";
+import type { SourceStatus } from "../../server/src/freetime/types";
+
+export type { Interest, Plan, PlanStop, Town, SourceStatus };
+
+export interface FreeTimeMeta {
+  towns: Town[];
+  interests: Interest[];
+  generatedAt: string;
+  sources: SourceStatus[];
+  /** Demo: listings come from a dated snapshot, with no live forecast. */
+  snapshot?: boolean;
+}
+
+export type FreeTimeResult = PlanResult & { town: Town; generatedAt: string; sources: SourceStatus[] };
+
+export interface SavedPlan {
+  id: string;
+  date: string;
+  townName: string;
+  title: string;
+  createdAt: string;
+  stops: { name: string; kind: string; start: string; end: string; url: string | null; venue: string | null; lat: number; lng: number }[];
+}
 import { localApi } from "./demo/localApi";
 
 export { ApiError };
@@ -137,6 +162,11 @@ const httpApi = {
   updateDocument: (id: string, patch: { status?: Doc["status"]; title?: string }) => call<Doc>("PATCH", `/documents/${id}`, patch),
   deleteDocument: (id: string) => call<void>("DELETE", `/documents/${id}`),
   draft: (id: string, kind: DraftKind, note?: string) => call<Draft>("POST", `/documents/${id}/drafts`, { kind, note }),
+  freeTimeMeta: () => call<FreeTimeMeta>("GET", "/freetime/meta"),
+  planFreeTime: (req: PlanRequest & { near: string }) => call<FreeTimeResult>("POST", "/freetime/plan", req),
+  savedPlans: () => call<SavedPlan[]>("GET", "/freetime/plans"),
+  savePlan: (p: Omit<SavedPlan, "id" | "createdAt">) => call<SavedPlan>("POST", "/freetime/plans", p),
+  deletePlan: (id: string) => call<void>("DELETE", `/freetime/plans/${id}`),
   updateDeadline: (
     id: string,
     patch: Partial<{ title: string; date: string; amount: number | null; ownerId: string | null; done: boolean; confirm: boolean }>,

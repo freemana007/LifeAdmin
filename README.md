@@ -62,9 +62,29 @@ The end-to-end suite (`web/e2e/`) drives every button in both builds:
 
 It checks that each change survives a reload, that failures show a clear message with Retry, and that every screen passes an axe accessibility scan in light and dark.
 
+## Free time
+
+The **Free time** tab plans your free hours in Ireland. You choose a day, a time window, a town, who's going, a budget per person and your interests. It builds up to three timed plans, allowing for travel time, typical opening hours, sunset, the forecast and your budget. Evenings are planned around a timed event (a gig, a show) when there's one that fits. With kids, plans never include pubs or clubs. Every stop comes from the data below; nothing is invented. Saved plans also appear in the household's calendar feed.
+
+| Source | Used for | Licence |
+|---|---|---|
+| [Fáilte Ireland – Tourism Activities and Attractions](https://data.gov.ie/dataset/tourism-activities-and-attractions) | Heritage, museums, beaches, walks, food, pubs, activities | CC BY 4.0 |
+| [Fáilte Ireland – Events](https://data.gov.ie/dataset/events) | Gigs, shows, comedy, family events, festivals, markets (updated daily) | CC BY 4.0 |
+| [Get Ireland Active – Sport Ireland trailheads](https://data.gov.ie/dataset/getirelandactive_trailheads) | 1,600+ registered walking, cycling and paddling trails | CC BY 4.0 |
+| Met Éireann forecast API | Rain and temperature for the chosen time, so plans lean indoors when it's wet | CC BY 4.0 |
+| Ticketmaster Discovery API | Extra gigs, club nights and sport. **Off unless `TICKETMASTER_API_KEY` is set.** | Ticketmaster API terms |
+
+entertainment.ie has no public feed or data licence that we could find, so it isn't used. It can be added as a source if they agree to supply a feed.
+
+How the data is kept up to date:
+- `npm run freetime:snapshot -w server` fetches every source into `server/data/freetime-snapshot.json`.
+- The snapshot is committed, so the app and the phone demo work offline.
+- The server loads the snapshot at start-up, then refreshes from the live sources once a day. Set `FREETIME_LIVE=0` to turn the refresh off.
+- If a source fails, the other sources and the previous data stay in use.
+
 ## Phone demo
 
-`npm run build:demo -w web` builds a version that runs entirely in the browser, packed into one page (`web/dist-demo/life-admin.html`) for publishing as a claude.ai artifact. It reuses the same screens and the offline reader, and swaps the server for `web/src/demo/`. Documents are read by Claude through the artifact runtime when available, including photos. Each person's data is saved privately to their claude.ai account, or in their browser if that isn't possible. Email forwarding, PDFs, household sharing and the calendar feed need the full app.
+`npm run build:demo -w web` builds a version that runs entirely in the browser, packed into one page (`web/dist-demo/life-admin.html`) for publishing as a claude.ai artifact. It reuses the same screens and the offline reader, and swaps the server for `web/src/demo/`. Documents are read by Claude through the artifact runtime when available, including photos. Each person's data is saved privately to their claude.ai account, or in their browser if that isn't possible. Free time runs in the browser on the same planner, using the dated snapshot published next to the page as `freetime.json`. The demo can't fetch a live forecast. Email forwarding, PDFs, household sharing and the calendar feed need the full app.
 
 ## Layout
 

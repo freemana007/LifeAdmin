@@ -11,6 +11,21 @@ import { ApiError } from "../apiError";
 import { SAMPLES } from "../samples";
 import { runtime } from "./runtime";
 import { getBackend, type Profile, type StoredDoc } from "./storage";
+import { plan as planFreeTime, INTERESTS, type PlanRequest } from "../../../server/src/freetime/planner";
+import { townById, TOWNS } from "../../../server/src/freetime/towns";
+import type { Dataset } from "../../../server/src/freetime/types";
+import type { FreeTimeMeta, FreeTimeResult, SavedPlan } from "../api";
+
+// Free time listings: a dated snapshot of the open data, published next to the page.
+let dataset: Promise<Dataset> | null = null;
+function loadDataset(): Promise<Dataset> {
+  dataset ??= fetch("./freetime.json").then((r) => {
+    if (!r.ok) throw new ApiError(r.status, "The listings couldn't be loaded. Check your connection and try again.");
+    return r.json() as Promise<Dataset>;
+  });
+  dataset.catch(() => (dataset = null));
+  return dataset;
+}
 
 const FREE_LIMIT = 10;
 const ME_ID = "me";
@@ -377,6 +392,34 @@ Reply with only JSON: {"subject":"...","body":"...","to":"email address from the
       }
     }
     return draftFromTemplate(kind, a, p.name, note) as Draft;
+  },
+
+  async freeTimeMeta(): Promise<FreeTimeMeta> {
+    const d = await loadDataset();
+    return { towns: TOWNS, interests: [...INTERESTS], generatedAt: d.generatedAt, sources: d.sources, snapshot: true };
+  },
+
+  async planFreeTime(req: PlanRequest & { near: string }): Promise<FreeTimeResult> {
+    const town = townById(req.near);
+    if (!town) throw new ApiError(400, "Choose a town from the list.");
+    const d = await loadDataset();
+    return { ...planFreeTime(req, town, d.places, d.events, null), town, generatedAt: d.generatedAt, sources: d.sources };
+  },
+
+  async savedPlans(): Promise<SavedPlan[]> {
+    await profileOrThrow();
+    return (await (await getBackend()).listPlans()).sort((a, b) => a.date.localeCompare(b.date));
+  },
+
+  async savePlan(p: Omit<SavedPlan, "id" | "createdAt">): Promise<SavedPlan> {
+    await profileOrThrow();
+    const saved = { ...p, id: uuid(), createdAt: new Date().toISOString() };
+    await (await getBackend()).putPlan(saved);
+    return saved;
+  },
+
+  async deletePlan(id: string) {
+    await (await getBackend()).deletePlan(id);
   },
 
   async updateDeadline(id: string, patch: Partial<{ title: string; date: string; amount: number | null; ownerId: string | null; done: boolean; confirm: boolean }>) {

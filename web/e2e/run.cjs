@@ -382,6 +382,67 @@ async function coreTests(browser, mode) {
     await page.waitForSelector('.pill:has-text("Free plan")');
   });
 
+  await step(G, "Free time: plan a Saturday evening in Dublin (gigs), see another plan, open links", async () => {
+    await tab(page, "Free time");
+    await page.waitForSelector(".ft-form");
+    await page.locator(".ft-form .choice-chips").first().locator(".choice").nth(2).click(); // Saturday
+    await page.selectOption("#ft-near", "dublin-city-centre");
+    await page.selectOption("#ft-start", "18:00");
+    await page.selectOption("#ft-end", "23:30");
+    await page.click('.choice:has-text("Friends")');
+    await page.click('.choice:has-text("Gigs & music")');
+    await page.click('button:has-text("Plan my free time")');
+    await page.waitForSelector(".ft-itinerary", { timeout: 10000 });
+    expect((await page.locator(".ft-stop").count()) >= 1, "plan should have stops");
+    expect((await page.locator('.ft-stop .kind:has-text("Gig"), .ft-stop .kind:has-text("Live music")').count()) >= 1, "a gigs plan should include music");
+    const first = await text(page, ".ft-plan-title");
+    if (await page.locator('button:has-text("Show another plan")').count()) {
+      await page.click('button:has-text("Show another plan")');
+      await page.waitForFunction((t) => document.querySelector(".ft-plan-head .eyebrow")?.textContent?.startsWith("Plan 2"), first);
+    }
+    const href = await page.locator(".ft-stop a:has-text('Map')").first().getAttribute("href");
+    expect(/^https:\/\/www\.google\.com\/maps/.test(href ?? ""), "map link should open Google Maps");
+    expect(/Fáilte Ireland/.test(await text(page, ".ft-credits")), "open-data credits should be shown");
+  });
+
+  await step(G, "Free time: save a plan (survives reload), then delete it", async () => {
+    await page.click('button:has-text("Save plan")');
+    await page.waitForSelector('.toast:has-text("Plan saved")');
+    await reload(page);
+    await tab(page, "Free time");
+    await page.waitForSelector(".ft-saved li");
+    const n = await page.locator(".ft-saved li").count();
+    await page.click('.ft-saved button[aria-label^="Delete plan"]');
+    await page.waitForTimeout(300);
+    expect((await page.locator(".ft-saved li").count()) === n - 1, "plan should be deleted");
+  });
+
+  await step(G, "Free time: with kids, never a pub or club; a too-short slot explains itself", async () => {
+    await page.click('.choice:has-text("With kids")');
+    await page.click('.choice:has-text("Gigs & music")'); // turn off
+    await page.selectOption("#ft-start", "13:00");
+    await page.selectOption("#ft-end", "18:00");
+    await page.click('button:has-text("Plan my free time")');
+    await page.waitForSelector(".ft-itinerary, .empty-state", { timeout: 10000 });
+    const kinds = await page.locator(".ft-stop .kind").allInnerTexts();
+    expect(!kinds.some((k) => /pub|club/i.test(k)), `kids plan included: ${kinds.join(", ")}`);
+    await page.selectOption("#ft-start", "13:00");
+    await page.selectOption("#ft-end", "14:00");
+    await page.click('button:has-text("Plan my free time")');
+    await page.waitForSelector(".ft-itinerary, .empty-state", { timeout: 10000 });
+  });
+
+  await step(G, "Timeline: the weekend nudge (when shown) opens Free time", async () => {
+    await tab(page, "Timeline");
+    await page.waitForSelector(".summary-head");
+    if (await page.locator(".weekend-nudge").count()) {
+      await page.click(".weekend-nudge");
+      await page.waitForSelector(".ft-form");
+      await tab(page, "Timeline");
+      await page.waitForSelector(".summary-head");
+    }
+  });
+
   await step(G, "Timeline: all caught up after everything is done", async () => {
     await tab(page, "Timeline");
     await page.waitForSelector(".summary-head");
@@ -610,6 +671,13 @@ async function a11y(browser, mode) {
       await scan("capture");
       await tab(c.page, "Household");
       await scan("household");
+      await tab(c.page, "Free time");
+      await c.page.waitForSelector(".ft-form");
+      await scan("free time form");
+      await c.page.selectOption("#ft-near", "cork");
+      await c.page.click('button:has-text("Plan my free time")');
+      await c.page.waitForSelector(".ft-itinerary, .empty-state", { timeout: 10000 });
+      await scan("free time plan");
       expect(!problems.length, problems.join(" || "));
     });
     await c.context.close();
@@ -630,6 +698,10 @@ async function main() {
   const http = require("node:http");
   const demoServer = http
     .createServer((req, res) => {
+      if (req.url && req.url.startsWith("/freetime.json")) {
+        res.setHeader("content-type", "application/json");
+        return res.end(fs.readFileSync(path.join(ROOT, "web/dist-demo/freetime.json")));
+      }
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.end(fs.readFileSync(path.join(TMP, "demo.html")));
     })
@@ -638,7 +710,7 @@ async function main() {
   let server = null;
   if (ONLY !== "demo") {
     server = spawn(process.execPath, [path.join(ROOT, "server/dist/index.js")], {
-      env: { ...process.env, PORT: String(PORT), DATA_FILE: path.join(TMP, "db.json"), AI_ENGINE: "heuristic", ANTHROPIC_API_KEY: "" },
+      env: { ...process.env, PORT: String(PORT), DATA_FILE: path.join(TMP, "db.json"), AI_ENGINE: "heuristic", ANTHROPIC_API_KEY: "", FREETIME_LIVE: "0" },
       stdio: "ignore",
     });
     for (let i = 0; i < 50; i++) {

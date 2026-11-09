@@ -4,6 +4,7 @@ import icon from "./icon.svg";
 import { Capture } from "./screens/Capture";
 import { DocumentDetail } from "./screens/DocumentDetail";
 import { Documents } from "./screens/Documents";
+import { FreeTime } from "./screens/FreeTime";
 import { Household } from "./screens/Household";
 import { TimelineScreen } from "./screens/Timeline";
 import { Welcome } from "./screens/Welcome";
@@ -19,10 +20,12 @@ export type View =
   | { name: "capture" }
   | { name: "documents" }
   | { name: "household" }
+  | { name: "freetime"; date?: string }
   | { name: "document"; id: string; justCaptured?: boolean; draft?: DraftKind };
 
 const TABS: { name: View["name"]; label: string; icon: IconName }[] = [
   { name: "timeline", label: "Timeline", icon: "timeline" },
+  { name: "freetime", label: "Free time", icon: "sun" },
   { name: "capture", label: "Add", icon: "plus" },
   { name: "documents", label: "Library", icon: "library" },
   { name: "household", label: "Household", icon: "home" },
@@ -144,6 +147,7 @@ function Shell() {
       <main className="content" id="main">
         <ErrorBoundary resetKey={view}>
         {view.name === "timeline" && <TimelineScreen me={me} go={go} hidden={hidden} onAbout={() => setAboutOpen(true)} />}
+        {view.name === "freetime" && <FreeTime go={go} initialDate={view.date} />}
         {view.name === "capture" && <Capture me={me} go={go} onCaptured={refreshMe} />}
         {view.name === "documents" && <Documents go={go} hidden={hidden} />}
         {view.name === "document" && (

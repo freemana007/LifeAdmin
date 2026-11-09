@@ -497,3 +497,47 @@ details.more > .more-body { padding: 0 var(--s-4) var(--s-4); }
 .about-link { display: inline-flex; align-items: center; gap: 6px; justify-self: start; min-height: 40px; }
 .icon-btn { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--surface-2); color: var(--ink-2); cursor: pointer; }
 .topbar-right { display: flex; align-items: center; gap: var(--s-2); }
+
+/* ---------- Free time ---------- */
+.ft-field { border: 0; margin: 0; padding: 0; display: grid; gap: var(--s-2); min-width: 0; }
+.ft-field legend { font-size: var(--t-sm); font-weight: 650; color: var(--ink-2); padding: 0; margin-bottom: var(--s-2); }
+.choice.on { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+.choice.interest { display: inline-flex; align-items: center; gap: 4px; }
+.choice.interest.on { background: var(--cat-bg); color: var(--cat-on); border-color: transparent; }
+.choice-date { display: inline-flex; align-items: center; padding: 0 var(--s-2); }
+.choice-date input { min-height: 36px !important; border: 0 !important; background: transparent !important; padding: 0 4px !important; width: auto !important; box-shadow: none !important; }
+.ft-weather { display: flex; gap: var(--s-2); align-items: center; padding: var(--s-3) var(--s-4); border-radius: var(--r-lg); background: var(--renewal-soft); color: var(--ink); font-weight: 600; }
+.ft-weather .icon { color: var(--renewal); flex: none; }
+.ft-weather.is-rainy { background: var(--bill-soft); }
+.ft-weather.is-rainy .icon { color: var(--bill); }
+.ft-weather a { color: inherit; }
+.ft-plan-title { font-size: var(--t-xl); line-height: 1.2; margin-top: 2px; }
+.ft-itinerary { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); position: relative; }
+.ft-itinerary::before { content: ""; position: absolute; left: 27px; top: 8px; bottom: 8px; width: 2px; background: var(--line); border-radius: 2px; }
+.ft-stop { position: relative; display: grid; gap: var(--s-2); }
+.ft-leg { display: inline-flex; align-items: center; gap: 6px; margin-left: 64px; font-size: var(--t-xs); font-weight: 650; color: var(--ink-2); }
+.ft-stop-row { display: flex; gap: var(--s-3); align-items: flex-start; }
+.ft-time { position: relative; z-index: 1; flex: none; width: 56px; display: grid; justify-items: center; padding: 6px 0; border-radius: var(--r-md); background: var(--cat-bg); color: var(--cat-on); font-variant-numeric: tabular-nums; line-height: 1.15; }
+.ft-time strong { font-family: var(--font-display); font-size: 1rem; }
+.ft-time span { font-size: 0.75rem; opacity: 0.9; }
+.ft-card { flex: 1; min-width: 0; display: grid; gap: 6px; padding: var(--s-3); background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow-1); border-left: 4px solid var(--cat-bg); }
+.ft-card-top { display: flex; align-items: center; gap: var(--s-2); }
+.ft-card-top .kind { color: var(--cat); }
+.ft-card h3 { font-size: 1.0625rem; line-height: 1.25; overflow-wrap: anywhere; }
+.ft-price { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ft-card-top .badge { margin-left: auto; }
+.ft-note { display: flex; gap: 6px; align-items: flex-start; font-size: var(--t-xs); color: var(--ink-2); }
+.ft-note .icon { flex: none; margin-top: 2px; color: var(--ink-3); }
+.ft-saved { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
+.ft-saved li { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) 0; border-bottom: 1px solid var(--line); }
+.ft-saved li:last-child { border-bottom: 0; }
+.ft-saved .grow { flex: 1; min-width: 0; display: grid; }
+.ft-credits { font-size: var(--t-xs); color: var(--ink-2); display: grid; gap: 4px; }
+.ft-credits ul { margin: 0; padding-left: 1.1em; }
+.ft-credits a { color: inherit; }
+.weekend-nudge { display: flex; align-items: center; gap: var(--s-3); width: 100%; padding: var(--s-4); border: 0; border-radius: var(--r-lg); background: linear-gradient(135deg, var(--warranty-soft), var(--renewal-soft)); text-align: left; cursor: pointer; color: var(--ink); box-shadow: var(--shadow-1); }
+.weekend-nudge .tile { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: var(--renewal-bg); color: var(--renewal-on); flex: none; }
+.weekend-nudge .grow { flex: 1; display: grid; gap: 2px; }
+.weekend-nudge > .icon { color: var(--ink-3); }
+.choice:not([class*="cat-"]) { background: var(--surface-2); color: var(--ink); }
+.choice:not([class*="cat-"]).on { background: var(--brand); color: var(--brand-ink); }

@@ -1,6 +1,6 @@
 // Packs the demo build into one self-contained HTML page for publishing as a
 // claude.ai artifact (the artifact host wraps it in its own <html>/<head>).
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const dir = "dist-demo";
@@ -23,4 +23,6 @@ ${safeJs}
 </script>
 `;
 writeFileSync(join(dir, "life-admin.html"), html);
+// Free time listings: a dated snapshot of the open data, published next to the page as freetime.json.
+copyFileSync(new URL("../../server/data/freetime-snapshot.json", import.meta.url), join(dir, "freetime.json"));
 console.log(`wrote ${dir}/life-admin.html (${(html.length / 1024).toFixed(0)} KB)`);

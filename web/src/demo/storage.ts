@@ -14,8 +14,20 @@ export interface StoredDoc {
   deadlines: Deadline[];
 }
 
+export interface StoredPlan {
+  id: string;
+  date: string;
+  townName: string;
+  title: string;
+  createdAt: string;
+  stops: { name: string; kind: string; start: string; end: string; url: string | null; venue: string | null; lat: number; lng: number }[];
+}
+
 export interface Backend {
   readonly kind: "account" | "device";
+  listPlans(): Promise<StoredPlan[]>;
+  putPlan(p: StoredPlan): Promise<void>;
+  deletePlan(id: string): Promise<void>;
   getProfile(): Promise<Profile | null>;
   putProfile(p: Profile): Promise<void>;
   listDocs(): Promise<StoredDoc[]>;
@@ -75,7 +87,7 @@ function notice(message: string) {
 /** This browser only. Every access is guarded; private windows can refuse storage. */
 class DeviceBackend implements Backend {
   readonly kind = "device" as const;
-  private mem: { profile: Profile | null; docs: Record<string, StoredDoc> } = { profile: null, docs: {} };
+  private mem: { profile: Profile | null; docs: Record<string, StoredDoc>; plans?: Record<string, StoredPlan> } = { profile: null, docs: {} };
 
   constructor() {
     try {
@@ -108,6 +120,17 @@ class DeviceBackend implements Backend {
   }
   async deleteDoc(id: string) {
     delete this.mem.docs[id];
+    this.save();
+  }
+  async listPlans() {
+    return clone(Object.values(this.mem.plans ?? {}));
+  }
+  async putPlan(p: StoredPlan) {
+    (this.mem.plans ??= {})[p.id] = clone(p);
+    this.save();
+  }
+  async deletePlan(id: string) {
+    delete this.mem.plans?.[id];
     this.save();
   }
   clear() {
@@ -177,6 +200,16 @@ class AccountBackend implements Backend {
   deleteDoc(id: string) {
     return this.enqueue(`doc-${id}`, () => this.col.doc(`doc-${id}`).delete());
   }
+  async listPlans() {
+    const snap = await this.col.get();
+    return snap.docs.filter((d) => d.id.startsWith("plan-")).map((d) => clone(d.data() as unknown as StoredPlan));
+  }
+  putPlan(p: StoredPlan) {
+    return this.enqueue(`plan-${p.id}`, () => this.col.doc(`plan-${p.id}`).set(clone(p) as unknown as Record<string, unknown>));
+  }
+  deletePlan(id: string) {
+    return this.enqueue(`plan-${id}`, () => this.col.doc(`plan-${id}`).delete());
+  }
 }
 
 // Codes meaning "this viewer can't save to the account here" (e.g. view-only access).
@@ -202,6 +235,7 @@ class SyncedBackend implements Backend {
     if (profile && !(await device.getProfile())) await device.putProfile(profile);
     const have = new Set((await device.listDocs()).map((d) => d.document.id));
     for (const d of docs) if (!have.has(d.document.id)) await device.putDoc(d);
+    for (const p of await this.account.listPlans().catch(() => [])) await device.putPlan(p);
     this.device = device;
     writeMode("device");
     notice(reason);
@@ -218,6 +252,7 @@ class SyncedBackend implements Backend {
     try {
       await this.account.putProfile(profile);
       for (const d of await device.listDocs()) await this.account.putDoc(d);
+      for (const p of await device.listPlans()) await this.account.putPlan(p);
       device.clear();
       writeMode(null);
       return true;
@@ -254,6 +289,15 @@ class SyncedBackend implements Backend {
   }
   deleteDoc(id: string) {
     return this.write((b) => b.deleteDoc(id));
+  }
+  listPlans() {
+    return (this.device ?? this.account).listPlans();
+  }
+  putPlan(p: StoredPlan) {
+    return this.write((b) => b.putPlan(p));
+  }
+  deletePlan(id: string) {
+    return this.write((b) => b.deletePlan(id));
   }
 }
 
