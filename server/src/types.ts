@@ -117,12 +117,25 @@ export interface Draft {
   engine: "claude" | "heuristic";
 }
 
+export interface SavedPlan {
+  id: string;
+  householdId: string;
+  createdBy: string;
+  createdAt: string;
+  date: string;
+  townName: string;
+  title: string;
+  stops: { name: string; kind: string; start: string; end: string; url: string | null; venue: string | null; lat: number; lng: number }[];
+}
+
 export interface Database {
   users: User[];
   households: Household[];
   documents: LifeDocument[];
   deadlines: Deadline[];
   remindersSent: { deadlineId: string; offsetDays: number; sentAt: string }[];
+  /** Plans from the Free time tab that a household kept. */
+  freeTimePlans?: SavedPlan[];
   /** One digest per person per day (calm notification budget). */
   digestsSent?: { userId: string; date: string; sentAt: string }[];
 }

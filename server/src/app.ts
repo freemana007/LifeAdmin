@@ -19,7 +19,11 @@ import {
   QuotaError,
 } from "./service.js";
 import type { Store } from "./store.js";
+import { FreeTimeService } from "./freetime/service.js";
+import { INTERESTS } from "./freetime/planner.js";
+import { TOWNS, townById } from "./freetime/towns.js";
 import { DEADLINE_KINDS, DRAFT_KINDS, type User } from "./types.js";
+import { newId } from "./util.js";
 import { todayIso } from "./util.js";
 
 const ACCEPTED = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/gif", "text/plain"];
@@ -38,6 +42,7 @@ export interface AppOptions {
   /** Directory with the built web app, served at /. */
   webDist?: string;
   now?: () => Date;
+  freeTime?: FreeTimeService;
 }
 
 class HttpError extends Error {
@@ -52,7 +57,7 @@ const h =
   (req: Request, res: Response, next: NextFunction) =>
     Promise.resolve(fn(req, res)).catch(next);
 
-export function createApp({ store, ai, inboundSecret, webDist, now = () => new Date() }: AppOptions) {
+export function createApp({ store, ai, inboundSecret, webDist, now = () => new Date(), freeTime = new FreeTimeService() }: AppOptions) {
   const app = express();
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -371,7 +376,98 @@ export function createApp({ store, ai, inboundSecret, webDist, now = () => new D
       if (!user) throw new HttpError(404, "Calendar not found.");
       res
         .type("text/calendar")
-        .send(deadlinesToIcs(store.data.deadlines.filter((d) => d.householdId === user.householdId), now()));
+        .send(
+          deadlinesToIcs(
+            store.data.deadlines.filter((d) => d.householdId === user.householdId),
+            now(),
+            (store.data.freeTimePlans ?? []).filter((p) => p.householdId === user.householdId),
+          ),
+        );
+    }),
+  );
+
+  // ---------- Free time ----------
+  app.get("/api/freetime/meta", (_req, res) => {
+    res.json({ towns: TOWNS, interests: INTERESTS, ...freeTime.status() });
+  });
+
+  const PlanBody = z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    start: z.string().regex(/^\d{2}:\d{2}$/),
+    end: z.string().regex(/^\d{2}:\d{2}$/),
+    near: z.string().min(1),
+    radiusKm: z.number().min(1).max(80).default(20),
+    who: z.enum(["solo", "couple", "kids", "friends"]).default("couple"),
+    budget: z.number().min(0).max(1000).nullable().default(null),
+    interests: z.array(z.enum(INTERESTS)).max(INTERESTS.length).default([]),
+  });
+
+  app.post(
+    "/api/freetime/plan",
+    auth,
+    h(async (req, res) => {
+      const body = parse(PlanBody, req.body);
+      const town = townById(body.near);
+      if (!town) throw new HttpError(400, "Choose a town from the list.");
+      const result = await freeTime.plan(body, town);
+      res.json({ ...result, town, ...freeTime.status() });
+    }),
+  );
+
+  app.get(
+    "/api/freetime/plans",
+    auth,
+    h((req, res) => {
+      res.json((store.data.freeTimePlans ?? []).filter((p) => p.householdId === req.user!.householdId).sort((a, b) => a.date.localeCompare(b.date)));
+    }),
+  );
+
+  app.post(
+    "/api/freetime/plans",
+    auth,
+    h((req, res) => {
+      const body = parse(
+        z.object({
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          townName: z.string().max(80),
+          title: z.string().max(160),
+          stops: z
+            .array(
+              z.object({
+                name: z.string().max(200),
+                kind: z.string().max(20),
+                start: z.string().regex(/^\d{2}:\d{2}$/),
+                end: z.string().regex(/^\d{2}:\d{2}$/),
+                url: z.string().url().max(500).nullable(),
+                venue: z.string().max(200).nullable(),
+                lat: z.number(),
+                lng: z.number(),
+              }),
+            )
+            .min(1)
+            .max(8),
+        }),
+        req.body,
+      );
+      const saved = store.mutate((db) => {
+        const p = { id: newId(), householdId: req.user!.householdId, createdBy: req.user!.id, createdAt: now().toISOString(), ...body };
+        (db.freeTimePlans ??= []).push(p);
+        return p;
+      });
+      res.status(201).json(saved);
+    }),
+  );
+
+  app.delete(
+    "/api/freetime/plans/:id",
+    auth,
+    h((req, res) => {
+      const found = (store.data.freeTimePlans ?? []).some((p) => p.id === req.params.id && p.householdId === req.user!.householdId);
+      if (!found) throw new HttpError(404, "Plan not found.");
+      store.mutate((db) => {
+        db.freeTimePlans = (db.freeTimePlans ?? []).filter((p) => p.id !== req.params.id);
+      });
+      res.status(204).end();
     }),
   );
 

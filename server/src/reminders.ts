@@ -1,4 +1,4 @@
-import type { Database, Deadline, User } from "./types.js";
+import type { Database, Deadline, SavedPlan, User } from "./types.js";
 import { addDays, daysBetween, todayIso } from "./util.js";
 
 /** Days before a deadline when we remind. Renewals get extra lead time to shop around. */
@@ -107,7 +107,7 @@ function icsEscape(s: string) {
 }
 
 /** RFC 5545 calendar of open deadlines. Subscribable from Google, Outlook and Apple Calendar. */
-export function deadlinesToIcs(deadlines: Deadline[], now = new Date()): string {
+export function deadlinesToIcs(deadlines: Deadline[], now = new Date(), plans: SavedPlan[] = []): string {
   const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//LifeAdmin//Timeline//EN", "CALSCALE:GREGORIAN", "X-WR-CALNAME:Life Admin"];
   for (const d of deadlines) {
@@ -129,6 +129,25 @@ export function deadlinesToIcs(deadlines: Deadline[], now = new Date()): string 
       "END:VALARM",
       "END:VEVENT",
     );
+  }
+  // Saved free-time plans: one timed event per stop (floating local time).
+  for (const p of plans) {
+    const day = p.date.replace(/-/g, "");
+    p.stops.forEach((s, i) => {
+      const t = (hhmm: string) => `${day}T${hhmm.replace(":", "")}00`;
+      lines.push(
+        "BEGIN:VEVENT",
+        `UID:${p.id}-${i}@lifeadmin`,
+        `DTSTAMP:${stamp}`,
+        `DTSTART:${t(s.start)}`,
+        `DTEND:${s.end > s.start ? t(s.end) : t("23:59")}`,
+        `SUMMARY:${icsEscape(s.name)}`,
+        `LOCATION:${icsEscape(s.venue ?? `${s.lat},${s.lng}`)}`,
+        ...(s.url ? [`URL:${s.url}`] : []),
+        `DESCRIPTION:${icsEscape(`Part of your free-time plan: ${p.title}`)}`,
+        "END:VEVENT",
+      );
+    });
   }
   lines.push("END:VCALENDAR");
   return lines.join("\r\n") + "\r\n";
