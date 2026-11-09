@@ -7,6 +7,7 @@ import { CaughtUpArt, EmptyArt } from "../illustrations";
 import { DateStamp, EmptyState, Money, Progress, ProviderBadge } from "../ui/bits";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
+import { AboutCard, aboutHidden, hideAbout } from "../ui/About";
 import { Sheet } from "../ui/Sheet";
 import { useToast } from "../ui/Toast";
 import { useAction } from "../ui/useAction";
@@ -36,7 +37,8 @@ function greeting() {
 
 const hasPriceRise = (doc?: Doc) => Boolean(doc?.analysis.flags.some((f) => /price|increase|rise|goes up/i.test(f)));
 
-export function TimelineScreen({ me, go, hidden }: { me: Me; go: (v: View) => void; hidden: Set<string> }) {
+export function TimelineScreen({ me, go, hidden, onAbout }: { me: Me; go: (v: View) => void; hidden: Set<string>; onAbout: () => void }) {
+  const [showAbout, setShowAbout] = useState(() => !aboutHidden());
   const [data, setData] = useState<Timeline | null>(null);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -177,6 +179,15 @@ export function TimelineScreen({ me, go, hidden }: { me: Me; go: (v: View) => vo
         )}
         {view.thisMonth.length > 0 && <Progress done={monthDone} total={view.thisMonth.length} label="sorted this month" />}
       </header>
+
+      {showAbout ? (
+        <AboutCard onAdd={() => go({ name: "capture" })} onDismiss={() => (hideAbout(), setShowAbout(false))} />
+      ) : (
+        <button className="link small about-link" onClick={onAbout}>
+          <Icon name="info" size={18} />
+          What is Life Admin?
+        </button>
+      )}
 
       {view.visible.length === 0 ? (
         <div className="card">

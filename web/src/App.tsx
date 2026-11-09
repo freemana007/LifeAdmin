@@ -8,6 +8,7 @@ import { Household } from "./screens/Household";
 import { TimelineScreen } from "./screens/Timeline";
 import { Welcome } from "./screens/Welcome";
 import { onStorageNotice } from "./demo/storage";
+import { AboutSheet } from "./ui/About";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { Icon, type IconName } from "./ui/Icon";
 import { ToastProvider, useToast } from "./ui/Toast";
@@ -58,6 +59,7 @@ function Shell() {
 
   // Important enough to stay on screen until dismissed (a toast could be replaced by the next one).
   const [storageNotice, setStorageNotice] = useState<string | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
   useEffect(() => (DEMO ? onStorageNotice(setStorageNotice) : undefined), []);
 
   const refreshMe = useCallback(async () => {
@@ -122,7 +124,12 @@ function Shell() {
           <span>Life Admin</span>
           {DEMO && <span className="demo-tag">Demo</span>}
         </div>
-        <span className={`pill ${me.household.plan === "premium" ? "pill-premium" : ""}`}>{me.household.plan === "premium" ? "Premium" : "Free plan"}</span>
+        <span className="topbar-right">
+          <span className={`pill ${me.household.plan === "premium" ? "pill-premium" : ""}`}>{me.household.plan === "premium" ? "Premium" : "Free plan"}</span>
+          <button className="icon-btn" aria-label="What is Life Admin?" onClick={() => setAboutOpen(true)}>
+            <Icon name="info" size={22} />
+          </button>
+        </span>
       </header>
 
       {storageNotice && (
@@ -136,7 +143,7 @@ function Shell() {
       )}
       <main className="content" id="main">
         <ErrorBoundary resetKey={view}>
-        {view.name === "timeline" && <TimelineScreen me={me} go={go} hidden={hidden} />}
+        {view.name === "timeline" && <TimelineScreen me={me} go={go} hidden={hidden} onAbout={() => setAboutOpen(true)} />}
         {view.name === "capture" && <Capture me={me} go={go} onCaptured={refreshMe} />}
         {view.name === "documents" && <Documents go={go} hidden={hidden} />}
         {view.name === "document" && (
@@ -156,6 +163,8 @@ function Shell() {
         )}
         </ErrorBoundary>
       </main>
+
+      <AboutSheet open={aboutOpen} onClose={() => setAboutOpen(false)} onAdd={() => (setAboutOpen(false), go({ name: "capture" }))} />
 
       <nav className="tabbar" aria-label="Main">
         {TABS.map((t) => (

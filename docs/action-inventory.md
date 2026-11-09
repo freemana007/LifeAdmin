@@ -10,6 +10,8 @@ After every action the suite also checks: no page errors, no unhandled promise r
 |---|---|---|---|
 | Welcome | Start with a name | Timeline with 3 labelled example letters | both |
 | Welcome | Join with an invite code | Second person sees the same household timeline | full |
+| Home | "What is Life Admin?" card on first visit → Got it | Hidden, and stays hidden after reload | both |
+| Home | "What is Life Admin?" link / top-bar info button | Explainer opens in a sheet; "Add a letter" goes to Add | both |
 | Timeline | Next-up main button | Opens the right draft (reply / cancel / better price) or marks a payment paid | both |
 | Timeline | Next-up "Mark done" | Moves to the next item; Undo toast; saved after reload | both |
 | Timeline | Tick a row, then Undo | Restored, and still restored after reload | both |

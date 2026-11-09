@@ -150,6 +150,28 @@ async function coreTests(browser, mode) {
     await page.waitForSelector(".next-up");
   });
 
+  await step(G, "Home: explains what Life Admin is; Got it hides it (also after reload)", async () => {
+    await page.waitForSelector(".about-card");
+    expect(/household post/.test(await text(page, ".about-card")), "explainer should say what the app is");
+    expect((await page.locator(".about-steps li").count()) === 3, "explainer should have 3 steps");
+    await page.click('.about-card button:has-text("Got it")');
+    await page.waitForSelector(".about-link");
+    await reload(page);
+    expect((await page.locator(".about-card").count()) === 0, "explainer should stay hidden");
+  });
+
+  await step(G, "Home: the link and the top-bar info button open the explainer; Add a letter opens Add", async () => {
+    await page.click(".about-link");
+    await page.waitForSelector('.sheet:has-text("household post")');
+    await page.click(".sheet-close");
+    await page.waitForSelector(".sheet", { state: "detached" });
+    await page.click('.topbar button[aria-label="What is Life Admin?"]');
+    await page.click('.sheet button:has-text("Add a letter")');
+    await page.waitForSelector(".capture-option");
+    await tab(page, "Timeline");
+    await page.waitForSelector(".next-up");
+  });
+
   await step(G, "Timeline: Next-up primary action opens the right draft", async () => {
     const label = await text(page, ".next-up .btn-on-colour");
     await page.click(".next-up .btn-on-colour");

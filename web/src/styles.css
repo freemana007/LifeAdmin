@@ -476,3 +476,24 @@ details.more > .more-body { padding: 0 var(--s-4) var(--s-4); }
 .storage-banner > span { flex: 1; }
 .storage-banner .icon { color: var(--official); }
 .storage-banner .toast-btn { background: transparent; color: var(--ink-2); }
+
+/* What is Life Admin? */
+.about-card { background: linear-gradient(160deg, var(--brand-soft), var(--surface) 70%); display: grid; gap: var(--s-3); }
+.about-card h2 { font-size: var(--t-xl); }
+.about { display: grid; gap: var(--s-3); }
+.about-lede { font-size: 1.0625rem; line-height: 1.5; }
+.about-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
+.about-steps li { display: flex; gap: var(--s-3); align-items: flex-start; }
+.about-num {
+  flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--cat-bg); color: var(--cat-on); font-family: var(--font-display); font-weight: 800;
+}
+.about-text { display: grid; gap: 2px; min-width: 0; }
+.about-text strong { display: inline-flex; align-items: center; gap: 6px; }
+.about-text strong .icon { color: var(--cat); }
+.about-text > span { font-size: var(--t-sm); color: var(--ink-2); }
+.about-note { display: flex; gap: 6px; align-items: flex-start; }
+.about-note .icon { flex: none; margin-top: 2px; color: var(--brand); }
+.about-link { display: inline-flex; align-items: center; gap: 6px; justify-self: start; min-height: 40px; }
+.icon-btn { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--surface-2); color: var(--ink-2); cursor: pointer; }
+.topbar-right { display: flex; align-items: center; gap: var(--s-2); }
