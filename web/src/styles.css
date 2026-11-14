@@ -555,6 +555,7 @@ details.more > .more-body { padding: 0 var(--s-4) var(--s-4); }
 .swipe-card.is-top:active { cursor: grabbing; }
 .swipe-band { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-5) var(--s-4) var(--s-4); background: var(--cat-bg); color: var(--cat-on); min-height: 96px; align-items: flex-end; }
 .swipe-band .kind { color: inherit; font-size: var(--t-sm); }
+.swipe-band .badge-on { background: var(--cat-on); color: var(--cat-bg); } /* inverted: same contrast as the band text, on any category colour */
 .swipe-body { flex: 1; display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-4); min-height: 0; }
 .swipe-body h3 { font-size: 1.5rem; line-height: 1.15; overflow-wrap: anywhere; }
 .swipe-when, .swipe-meta { display: flex; align-items: center; gap: 6px; font-weight: 650; color: var(--ink-2); font-size: var(--t-sm); }

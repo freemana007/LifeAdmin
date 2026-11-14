@@ -140,6 +140,46 @@ npm run build
 DATABASE_URL=postgres://user:pass@localhost:5432/lifeadmin CRON_SECRET=dev PORT=3000 node web/e2e/vercel-local.mjs
 ```
 
+## Deploy to Netlify + Supabase
+
+The same repo also runs on **Netlify**, with **Supabase** Postgres for data. It uses:
+- `netlify.toml`;
+- `netlify/functions/api.mjs`, which serves every `/api/*` request;
+- two Scheduled Functions: the reminder digest at 08:00 UTC, and the Free time refresh at 04:30 UTC.
+
+**1. Database (Supabase).** Use a project in **West EU (Ireland)**. A new project works, or an existing one: the app keeps everything in its own schema. In the SQL editor, run this, with a long random password of your own:
+
+```sql
+CREATE ROLE lifeadmin_app LOGIN NOINHERIT PASSWORD 'choose-a-long-random-password';
+GRANT lifeadmin_app TO postgres;
+CREATE SCHEMA lifeadmin AUTHORIZATION lifeadmin_app;
+REVOKE ALL ON SCHEMA lifeadmin FROM PUBLIC;
+```
+
+- **Private schema.** The tables live in the `lifeadmin` schema, never in `public`, so Supabase's Data API can't reach them with the project's public key.
+- **Row Level Security** is on, as a second lock.
+- **Own login.** The app signs in as `lifeadmin_app`, which can touch only that schema.
+
+**2. Site (Netlify).** Import the repo. The build settings come from `netlify.toml`. Then add these under **Site configuration → Environment variables**:
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` (secret, required) | `postgresql://lifeadmin_app.<project-ref>:<password>@aws-<n>-eu-west-1.pooler.supabase.com:6543/postgres`. This is the **transaction pooler** string from Supabase → **Connect**, with the user changed to `lifeadmin_app.<project-ref>`. |
+| `ANTHROPIC_API_KEY` | Optional: photo reading and AI drafts |
+| `INBOUND_SECRET`, `INBOX_DOMAIN`, `TICKETMASTER_API_KEY` | Optional |
+
+- **Certificate checks.** Connections to Supabase are encrypted and verified against Supabase's root certificate, which ships in `server/certs/`. For another Postgres provider, set `DATABASE_CA_CERT` to its CA certificate (PEM), or the connection is encrypted without the certificate being checked.
+- **Schema name.** `DATABASE_SCHEMA` changes the schema name (default `lifeadmin`).
+
+**3. Deploy**, then open `/api/health`. It should show `"storage":"postgres"`.
+
+**Limits.**
+- Uploads are capped at 4 MB, because of Netlify's 6 MB request limit including encoding.
+- Scheduled jobs have 30 seconds. If a Free time source is slow, the last listings stay in use.
+- Scheduled jobs run only on the published production deploy.
+
+**Test locally the Netlify way:** `npm run build`, then `E2E_NETLIFY=1 E2E_ONLY=server DATABASE_URL=postgres://… npm run e2e -w web`. This runs every browser check through the Netlify function.
+
 ## Before launch
 
 The prototype keeps the product shape and leaves out the infrastructure:

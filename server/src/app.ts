@@ -137,7 +137,7 @@ export function createApp({
   });
 
   // ---------- Health ----------
-  app.get("/api/health", (_req, res) => res.json({ ok: true, ai: ai.name }));
+  app.get("/api/health", (_req, res) => res.json({ ok: true, ai: ai.name, storage: store.kind }));
 
   // ---------- Accounts & household ----------
   app.post(

@@ -18,6 +18,11 @@ export class Store {
     }
   }
 
+  /** Where data lives, for /api/health. */
+  get kind(): string {
+    return this.path ? "file" : "memory";
+  }
+
   get data(): Database {
     return this.db;
   }

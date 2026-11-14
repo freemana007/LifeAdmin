@@ -1,0 +1,27 @@
+# Netlify: the web app from web/dist, the API as one function, two scheduled jobs.
+# Settings (DATABASE_URL etc.) go in Site configuration → Environment variables,
+# not here. See README "Deploy to Netlify + Supabase".
+[build]
+  command = "npm run build"
+  publish = "web/dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  directory = "netlify/functions"
+  # Read from disk at runtime, so they must be shipped with the functions.
+  included_files = ["server/data/freetime-snapshot.json", "server/certs/*.crt"]
+
+# The API. Listed before the app fallback: the first matching rule wins.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+# Single-page app: any other path that isn't a file serves index.html.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { heuristicEngine } from "../src/ai/index.js";
 import { createApp } from "../src/app.js";
 import { ConflictError, PgStore, type Queryable } from "../src/pgStore.js";
+import { pgConfig } from "../src/serverless.js";
 import { electricityBill } from "./fixtures/samples.js";
 
 const pglite = (): Queryable => {
@@ -78,5 +79,47 @@ describe("Vercel-specific routes", () => {
       .attach("file", Buffer.alloc(4096, 1), { filename: "big.pdf", contentType: "application/pdf" })
       .expect(413);
     expect(res.body.error).toMatch(/over 0 MB|over/);
+  });
+
+  it("keeps its tables in a private schema with row-level security, nothing in public", async () => {
+    const db = pglite();
+    await PgStore.open(db);
+    const { rows } = await db.query<{ schemaname: string; tablename: string; rowsecurity: boolean }>(
+      `SELECT schemaname, tablename, rowsecurity FROM pg_tables WHERE schemaname IN ('public', 'lifeadmin') ORDER BY tablename`,
+    );
+    expect(rows).toEqual([
+      { schemaname: "lifeadmin", tablename: "blobs", rowsecurity: true },
+      { schemaname: "lifeadmin", tablename: "state", rowsecurity: true },
+    ]);
+    // Opening again (another cold start) is fine.
+    const again = await PgStore.open(db);
+    expect(again.kind).toBe("postgres");
+  });
+
+  it("can use another schema name, and rejects unsafe ones", async () => {
+    const db = pglite();
+    await PgStore.open(db, { schema: "life_admin_test" });
+    const { rows } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'life_admin_test'`);
+    expect(rows[0].n).toBe(2);
+    await expect(PgStore.open(db, { schema: 'x"; DROP TABLE y; --' })).rejects.toThrow(/Invalid schema/);
+  });
+});
+
+describe("Postgres connection settings", () => {
+  it("verifies Supabase connections with Supabase's CA, whatever sslmode says", () => {
+    const c = pgConfig("postgresql://app.ref:pw@aws-1-eu-west-1.pooler.supabase.com:6543/postgres?sslmode=require", {});
+    expect(c.connectionString).not.toContain("sslmode");
+    expect(c.ssl).toMatchObject({ rejectUnauthorized: true });
+    expect(String((c.ssl as { ca: string }).ca)).toContain("BEGIN CERTIFICATE");
+  });
+
+  it("uses DATABASE_CA_CERT when given", () => {
+    const c = pgConfig("postgres://u:p@db.example.com/x?sslmode=verify-full", { DATABASE_CA_CERT: "PEM" });
+    expect(c.ssl).toEqual({ ca: "PEM", rejectUnauthorized: true });
+  });
+
+  it("encrypts without verifying when only sslmode is set, and uses no TLS locally", () => {
+    expect(pgConfig("postgres://u:p@db.example.com/x?sslmode=require", {}).ssl).toEqual({ rejectUnauthorized: false });
+    expect(pgConfig("postgres://u:p@localhost:5432/x", {}).ssl).toBe(false);
   });
 });
