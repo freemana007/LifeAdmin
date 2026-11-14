@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { heuristicEngine } from "../src/ai/index.js";
 import { createApp } from "../src/app.js";
 import { ConflictError, PgStore, type Queryable } from "../src/pgStore.js";
-import { pgConfig } from "../src/serverless.js";
+import { otherPoolerUrl, pgConfig } from "../src/serverless.js";
 import { electricityBill } from "./fixtures/samples.js";
 
 const pglite = (): Queryable => {
@@ -121,5 +121,13 @@ describe("Postgres connection settings", () => {
   it("encrypts without verifying when only sslmode is set, and uses no TLS locally", () => {
     expect(pgConfig("postgres://u:p@db.example.com/x?sslmode=require", {}).ssl).toEqual({ rejectUnauthorized: false });
     expect(pgConfig("postgres://u:p@localhost:5432/x", {}).ssl).toBe(false);
+  });
+
+  it("knows the sibling Supabase pooler cluster, and nothing else", () => {
+    expect(otherPoolerUrl("postgresql://u.ref:p@aws-1-eu-west-1.pooler.supabase.com:6543/postgres")).toBe(
+      "postgresql://u.ref:p@aws-0-eu-west-1.pooler.supabase.com:6543/postgres",
+    );
+    expect(otherPoolerUrl("postgresql://u.ref:p@aws-0-eu-west-1.pooler.supabase.com:6543/postgres")).toContain("@aws-1-eu-west-1.");
+    expect(otherPoolerUrl("postgres://u:p@localhost:5432/x")).toBeNull();
   });
 });

@@ -42,6 +42,37 @@ export function pgConfig(url: string, env: NodeJS.ProcessEnv = process.env): pg.
   return { connectionString: u.toString(), ssl, max: 3, idleTimeoutMillis: 10_000 };
 }
 
+/**
+ * Supabase's shared pooler runs several clusters per region (aws-0-…, aws-1-…), and a
+ * project lives on only one. The wrong one answers "Tenant or user not found", which
+ * is easy to hit when copying the URL by hand, so that exact error tries the other.
+ */
+export function otherPoolerUrl(url: string): string | null {
+  const u = new URL(url);
+  const m = /^aws-(0|1)-(.+\.pooler\.supabase\.com)$/.exec(u.hostname);
+  if (!m) return null;
+  u.hostname = `aws-${m[1] === "0" ? "1" : "0"}-${m[2]}`;
+  return u.toString();
+}
+
+async function openPg(url: string, env: NodeJS.ProcessEnv): Promise<PgStore> {
+  const open = (u: string) => {
+    const pool = new pg.Pool(pgConfig(u, env));
+    return PgStore.open(pool, { schema: env.DATABASE_SCHEMA || undefined }).catch(async (err) => {
+      await pool.end().catch(() => {});
+      throw err;
+    });
+  };
+  try {
+    return await open(url);
+  } catch (err) {
+    const other = otherPoolerUrl(url);
+    if (!other || !/tenant or user not found/i.test(String((err as Error)?.message))) throw err;
+    console.warn(`[life-admin] ${new URL(url).hostname} doesn't host this project; trying ${new URL(other).hostname}. Update DATABASE_URL to skip this step.`);
+    return open(other);
+  }
+}
+
 export interface ServerlessParts {
   store: Store;
   freeTime: FreeTimeService;
@@ -52,7 +83,7 @@ export async function createServerlessParts(env: NodeJS.ProcessEnv = process.env
   const url = env.DATABASE_URL ?? env.POSTGRES_URL;
   let store: Store;
   if (url) {
-    store = await PgStore.open(new pg.Pool(pgConfig(url, env)), { schema: env.DATABASE_SCHEMA || undefined });
+    store = await openPg(url, env);
   } else {
     console.warn("[life-admin] No DATABASE_URL: using a temporary in-memory store. Data will not be kept.");
     store = new Store(null);
