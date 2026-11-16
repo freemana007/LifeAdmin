@@ -30,7 +30,7 @@ const TAG_RULES: [RegExp, Kind][] = [
   [/\b(Restaurant|Cafe|Seafood|Food and Drink)\b/, "food"],
   [/\b(Tour|Day Tour|Food Trails and Tour)\b/, "tour"],
   [/\b(Churches|Church Abbey)\b/, "heritage"],
-  [/\bCraft\b/, "talk"],
+  [/\bCraft\b/, "class"],
 ];
 
 const FREE_KINDS = new Set<Kind>(["walk", "beach", "nature"]);
@@ -71,24 +71,35 @@ export function mapAttractions(csvText: string): Place[] {
   return out;
 }
 
+/**
+ * Fáilte's "Event Type" column is almost always just "Event", so the kind comes
+ * from the words used. Rules are tried on the name first (most reliable), then on
+ * the name and description together. First match wins, most specific first.
+ */
 const EVENT_RULES: [RegExp, Kind][] = [
-  [/\b(club night|dj set|\bdj\b|nightclub|disco|rave)\b/i, "club"],
-  [/\b(comedy|comedian|stand-up|stand up)\b/i, "comedy"],
-  [/\b(panto|pantomime|santa|kids|children|family fun|toddler|storytime)\b/i, "family"],
-  [/\b(gig|concert|live music|band|orchestra|trad session|traditional music|singer|choir|jazz|acoustic|tribute)\b/i, "gig"],
-  [/\b(theatre|play by|musical|opera|ballet|drama|cinema|film screening)\b/i, "theatre"],
-  [/\b(market|craft fair|food fair)\b/i, "market"],
-  [/\b(match|race day|parkrun|marathon|gaa|rugby|hurling|football)\b/i, "sport"],
-  [/\b(walk|hike|trail)\b/i, "walk"],
-  [/\b(talk|lecture|workshop|exhibition|tour|reading)\b/i, "talk"],
+  [/\b(club night|dj set|dj|nightclub|disco|rave|silent disco)\b/i, "club"],
+  [/\b(comedy|comedian|stand-up|stand up|improv)\b/i, "comedy"],
+  [/\b(panto|pantomime|santa|santa's grotto|elf|kids|children's|family fun|toddler|storytime|story time|teddy|puppet)\b/i, "family"],
+  [/\b(gig|concert|live music|in concert|band|orchestra|trad session|traditional music|trad|singer|songwriter|choir|jazz|blues|acoustic|tribute|symphony|recital|carols?)\b/i, "gig"],
+  [/\b(theatre|play\b(?! area)|musical|opera|ballet|drama|cinema|film|screening|riverdance|dance show|circus|magic show|panto)\b/i, "theatre"],
+  [/\b(exhibition|exhibit|gallery|art show|artwork|installation|retrospective)\b/i, "exhibition"],
+  [/\b(workshop|masterclass|master class|class|classes|course|lesson|cocktail|craft|painting|pottery|wreath|cookery|cooking)\b/i, "class"],
+  [/\b(market|craft fair|food fair|christmas fair|car boot)\b/i, "market"],
+  [/\b(supper club|tasting|brunch|dinner|feast|food festival|afternoon tea)\b/i, "food"],
+  [/\b(ice skating|skating|match|race day|races|parkrun|marathon|5k|10k|gaa|rugby|hurling|football|swim|yoga|fitness)\b/i, "sport"],
+  [/\b(walk|walking|hike|trail|forest bathing|ramble)\b/i, "walk"],
+  [/\b(tour|tours|guided|audio tour|ghost tour)\b/i, "tour"],
+  [/\b(talk|lecture|reading|in conversation|book launch|seminar|discussion|symposium|poetry)\b/i, "talk"],
+  [/\b(festival|fest|fleadh)\b/i, "festival"],
 ];
 
 export function kindFromEvent(type: string, name: string, description: string): Kind {
-  const text = `${name} ${description}`;
-  for (const [re, kind] of EVENT_RULES) if (re.test(text)) return kind;
-  if (/festival/i.test(type) || /festival/i.test(name)) return "festival";
+  for (const text of [name, `${name} ${description}`]) {
+    for (const [re, kind] of EVENT_RULES) if (re.test(text)) return kind;
+  }
+  if (/festival/i.test(type)) return "festival";
   if (/market/i.test(type)) return "market";
-  return "talk";
+  return "other";
 }
 
 export function mapEvents(csvText: string): FtEvent[] {
@@ -115,7 +126,7 @@ export function mapEvents(csvText: string): FtEvent[] {
       county: titleCounty(r["County"] ?? ""),
       lat: round5(lat),
       lng: round5(lng),
-      indoor: kind !== "walk" && kind !== "sport" && kind !== "market" && kind !== "festival",
+      indoor: !["walk", "sport", "market", "festival", "tour"].includes(kind) || /\b(indoor|ice rink|leisure centre)\b/i.test(r["Name"]),
       durationMin: DEFAULT_DURATION[kind],
       price,
       free,

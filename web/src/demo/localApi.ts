@@ -30,6 +30,25 @@ function serial<T>(fn: () => Promise<T>): Promise<T> {
 }
 const tasteView = (t: StoredTaste): TasteState => ({ kinds: t.kinds, liked: t.liked as unknown as TasteState["liked"] });
 
+// Same rules as the server: a fresh shuffle each time, and things shown in the last week go further down.
+const newSeed = () => Math.floor(Math.random() * 2 ** 31);
+const recentOf = (t: StoredTaste) => {
+  const since = Date.now() - 7 * 86_400_000;
+  return (t.shown ?? []).filter((s) => Date.parse(s.at) >= since).map((s) => s.id);
+};
+function markShown(ids: string[]) {
+  if (!ids.length) return;
+  void serial(async () => {
+    const t = await readTaste();
+    const at = new Date().toISOString();
+    const fresh = new Set(ids);
+    t.shown = [...(t.shown ?? []).filter((s) => !fresh.has(s.id)), ...ids.map((id) => ({ id, at }))].slice(-300);
+    await (await getBackend()).putTaste(t);
+  }).catch(() => {
+    /* only a nicety: never fail the screen over it */
+  });
+}
+
 // Free time listings: a dated snapshot of the open data, published next to the page.
 let dataset: Promise<Dataset> | null = null;
 function loadDataset(): Promise<Dataset> {
@@ -419,11 +438,15 @@ Reply with only JSON: {"subject":"...","body":"...","to":"email address from the
     const [d, t] = await Promise.all([loadDataset(), readTaste()]);
     const full: PlanRequest = {
       ...req,
+      seed: req.seed ?? newSeed(),
+      recent: recentOf(t),
       taste: t.kinds as Taste,
       avoid: t.passed.map((p) => p.id),
       prefer: req.usePicks ? t.liked.filter((l) => l.date === req.date).map((l) => l.id) : undefined,
     };
-    return { ...planFreeTime(full, town, d.places, d.events, null), town, generatedAt: d.generatedAt, sources: d.sources };
+    const result = planFreeTime(full, town, d.places, d.events, null);
+    markShown(result.plans.flatMap((p) => p.stops.map((s) => s.id)));
+    return { ...result, town, generatedAt: d.generatedAt, sources: d.sources };
   },
 
   async freeTimeDeck(req: PlanRequest & { near: string }) {
@@ -431,7 +454,9 @@ Reply with only JSON: {"subject":"...","body":"...","to":"email address from the
     if (!town) throw new ApiError(400, "Choose a town from the list.");
     const [d, t] = await Promise.all([loadDataset(), readTaste()]);
     const seen = new Set([...t.passed.map((p) => p.id), ...t.liked.filter((l) => l.date === req.date).map((l) => l.id)]);
-    return { cards: dealDeck({ ...req, taste: t.kinds as Taste }, town, d.places, d.events, seen), ...tasteView(t) };
+    const cards = dealDeck({ ...req, seed: req.seed ?? newSeed(), recent: recentOf(t), taste: t.kinds as Taste }, town, d.places, d.events, seen);
+    markShown(cards.slice(0, 8).map((c) => c.id));
+    return { cards, ...tasteView(t) };
   },
 
   swipe(card: DeckCard, liked: boolean, date: string): Promise<TasteState> {

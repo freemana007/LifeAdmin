@@ -14,6 +14,7 @@ const freeTime = new FreeTimeService({
   snapshotPath: resolve(here, "../data/freetime-snapshot.json"),
   live: process.env.FREETIME_LIVE !== "0",
   ticketmasterKey: process.env.TICKETMASTER_API_KEY,
+  skiddleKey: process.env.SKIDDLE_API_KEY,
 });
 void freeTime.refresh();
 setInterval(() => void freeTime.refresh(), 24 * 60 * 60 * 1000).unref();

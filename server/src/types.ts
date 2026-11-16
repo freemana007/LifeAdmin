@@ -125,6 +125,8 @@ export interface FreeTimeTaste {
   liked: (Record<string, unknown> & { id: string; kind: string; date: string; likedAt: string })[];
   /** Ids swiped left (kept to the latest 500). */
   passed: { id: string; kind: string }[];
+  /** Cards and plan stops recently put in front of them (kept to the latest 300), so new things come up. */
+  shown?: { id: string; at: string }[];
 }
 
 export interface SavedPlan {

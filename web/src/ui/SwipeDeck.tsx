@@ -112,6 +112,7 @@ export function SwipeDeck({ cards, catOf, labelOf, onSwipe, onUndo, canUndo }: S
                 <div className="swipe-band">
                   <span className="kind">{labelOf(c.kind)}</span>
                   {c.event && <span className="badge badge-on">On that day</span>}
+                  {c.regular && <span className="badge badge-on">Runs regularly</span>}
                 </div>
                 <div className="swipe-body">
                   <h3>{c.name}</h3>

@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import { heuristicEngine } from "../src/ai/index.js";
 import { createApp } from "../src/app.js";
 import { parseCsv } from "../src/freetime/csv.js";
-import { deck, distanceKm, plan, tasteBoost, travel, type PlanRequest } from "../src/freetime/planner.js";
+import { deck, distanceKm, isDated, plan, tasteBoost, travel, type PlanRequest } from "../src/freetime/planner.js";
+import { dedupeEvents } from "../src/freetime/ingest.js";
+import { fetchSkiddle, mapSkiddle, type SkiddleEvent } from "../src/freetime/sources/skiddle.js";
 import { FreeTimeService } from "../src/freetime/service.js";
 import { kindFromEvent, mapAttractions, mapEvents } from "../src/freetime/sources/failte.js";
 import { parseMetXml } from "../src/freetime/sources/metEireann.js";
@@ -111,6 +113,14 @@ describe("source adapters (recorded real data)", () => {
     expect(kindFromEvent("Event", "Saturday Club Night", "DJ until late")).toBe("club");
     expect(kindFromEvent("Festival", "Cork Jazz Weekend", "")).toBe("gig");
     expect(kindFromEvent("Festival", "Winter Lights", "")).toBe("festival");
+    // No more catch-all "talk": the name is read first, then the description.
+    expect(kindFromEvent("Event", "Exhibition: Against the Odds", "")).toBe("exhibition");
+    expect(kindFromEvent("Event", "Winter Cocktail Masterclass", "")).toBe("class");
+    expect(kindFromEvent("Event", "Hidden Histories Audio Tour Temple Bar", "")).toBe("tour");
+    expect(kindFromEvent("Event", "Ice Skating Blanchardstown", "")).toBe("sport");
+    expect(kindFromEvent("Event", "Friday Night Supper Club", "")).toBe("food");
+    expect(kindFromEvent("Event", "Lecture: Medieval Dublin", "")).toBe("talk");
+    expect(kindFromEvent("Event", "Something Unusual", "A night to remember")).toBe("other");
   });
 
   it("Sport Ireland trails map to free walks, with long trails as sections", () => {
@@ -323,5 +333,132 @@ describe("Free time API", () => {
     expect(undone.body.kinds.pub).toEqual({ like: 0, pass: 0 });
     await request(app).delete("/api/freetime/taste").set(auth).expect(200);
     expect((await request(app).get("/api/freetime/taste").set(auth)).body).toEqual({ kinds: {}, liked: [] });
+  });
+});
+
+describe("variety", () => {
+  // Plenty of similar things near Cork, so the order is down to the shuffle.
+  const many: Place[] = Array.from({ length: 30 }, (_, i) => place(`m-${i}`, i % 2 ? "museum" : "heritage", at(0.001 * i, -0.001 * i)));
+  const req = { ...base, start: "10:00", end: "17:00" };
+  const top = (cards: { id: string }[], n = 10) => cards.slice(0, n).map((c) => c.id);
+
+  it("the same seed gives the same deck; another seed gives a different one", () => {
+    expect(top(deck({ ...req, seed: 5 }, cork, many, [], new Set()))).toEqual(top(deck({ ...req, seed: 5 }, cork, many, [], new Set())));
+    const a = top(deck({ ...req, seed: 5 }, cork, many, [], new Set()));
+    const b = top(deck({ ...req, seed: 6 }, cork, many, [], new Set()));
+    expect(a.filter((id) => !b.includes(id)).length + a.filter((id, i) => b[i] !== id).length).toBeGreaterThan(3);
+  });
+
+  it("pushes recently shown cards down so new ones come up", () => {
+    const first = top(deck({ ...req, seed: 1 }, cork, many, [], new Set()), 8);
+    const next = top(deck({ ...req, seed: 1, recent: first }, cork, many, [], new Set()), 8);
+    expect(next.filter((id) => first.includes(id)).length).toBeLessThanOrEqual(2);
+  });
+
+  it("gives different plans for different seeds", () => {
+    const key = (r: ReturnType<typeof plan>) => r.plans.map((p) => p.stops.map((s) => s.id).join(">")).join("|");
+    const keys = new Set([1, 2, 3, 4, 5].map((seed) => key(plan({ ...req, seed }, cork, many, []))));
+    expect(keys.size).toBeGreaterThan(1);
+  });
+
+  it("treats long-running listings as regular, not 'on that day', and ranks dated events above them", () => {
+    const regular = event("expo", "exhibition", { startDate: "2026-09-01", endDate: "2027-01-31", recurring: true, price: 0, free: true });
+    const tonight = event("show", "theatre", { startTime: "14:00", price: 0, free: true });
+    expect(isDated(regular)).toBe(false);
+    expect(isDated(tonight)).toBe(true);
+    const cards = deck({ ...req, seed: 1 }, cork, [], [regular, tonight], new Set());
+    const r = cards.find((c) => c.id === "expo")!;
+    expect(r.event).toBe(false);
+    expect(r.regular).toBe(true);
+    expect(r.when).toMatch(/check dates/i);
+    expect(cards[0].id).toBe("show");
+    expect(cards.find((c) => c.id === "show")!.event).toBe(true);
+  });
+
+  it("keeps at least one dated event in every three cards while there are any", () => {
+    // Few events, and far from town, so on score alone they'd sink below the places.
+    const dated = Array.from({ length: 4 }, (_, i) => event(`ev-${i}`, "gig", { startTime: "15:00", price: 10, url: null, ...at(0.12, 0.12) }));
+    for (const seed of [1, 2, 3]) {
+      const cards = deck({ ...req, seed }, cork, many, dated, new Set());
+      for (let i = 0; i + 3 <= 12; i += 3) expect(cards.slice(i, i + 3).some((c) => c.event)).toBe(true);
+    }
+  });
+
+  it("shows the same thing once even when it's listed several times", () => {
+    const twice = [event("a1", "gig", { name: "Big Night", venue: "Cyprus Avenue" }), event("a2", "gig", { name: "BIG NIGHT!", venue: "Cyprus Avenue", startTime: "20:00" })];
+    const cards = deck({ ...base, start: "18:00", end: "23:30", seed: 1 }, cork, [], twice, new Set());
+    expect(cards.filter((c) => /big night/i.test(c.name))).toHaveLength(1);
+    expect(dedupeEvents(twice)).toHaveLength(1);
+    expect(dedupeEvents(twice)[0].startTime).toBe("20:00");
+  });
+});
+
+describe("Skiddle", () => {
+  const sample: SkiddleEvent[] = [
+    {
+      id: 101,
+      EventCode: "LIVE",
+      eventname: "The Mary Wallopers",
+      link: "https://www.skiddle.com/whats-on/Dublin/x/101",
+      date: "2026-11-21",
+      startdate: "2026-11-21T20:00:00+00:00",
+      openingtimes: { doorsopen: "19:30" },
+      entryprice: "€28.50",
+      minage: "18",
+      description: "Rowdy ballads.",
+      venue: { name: "Vicar Street", town: "Dublin", latitude: 53.3426, longitude: -6.2785 },
+    },
+    { id: 102, EventCode: "CLUB", eventname: "Techno Night", date: "2026-11-21", venue: { name: "Index", town: "Dublin", latitude: "53.34", longitude: "-6.26" } },
+    { id: 103, EventCode: "LIVE", eventname: "London gig", date: "2026-11-21", venue: { name: "O2", town: "London", latitude: 51.5, longitude: -0.1 } },
+    { id: 104, EventCode: "DATE", eventname: "Speed dating", date: "2026-11-21", venue: { latitude: 53.3, longitude: -6.2 } },
+    { id: 105, EventCode: "LIVE", eventname: "Called off", cancelled: "1", date: "2026-11-21", venue: { latitude: 53.3, longitude: -6.2 } },
+  ];
+
+  it("maps gigs and club nights in Ireland, with times, prices and links", () => {
+    const out = mapSkiddle(sample);
+    expect(out.map((e) => e.name)).toEqual(["The Mary Wallopers", "Techno Night"]);
+    const g = out[0];
+    expect(g).toMatchObject({ source: "skiddle", kind: "gig", startDate: "2026-11-21", startTime: "19:30", price: 28.5, adultsOnly: true, venue: "Vicar Street" });
+    expect(g.url).toContain("skiddle.com");
+    expect(out[1].kind).toBe("club");
+  });
+
+  it("pages through results and only fails when nothing came back", async () => {
+    const calls: string[] = [];
+    const ok = await fetchSkiddle("k", new Date("2026-11-16T10:00:00Z"), {
+      fetcher: async (url) => {
+        calls.push(url);
+        return { ok: true, status: 200, json: async () => ({ error: 0, totalcount: "1", results: [sample[0]] }) };
+      },
+    });
+    expect(ok).toHaveLength(1); // merged by id across centres
+    expect(calls[0]).toContain("minDate=2026-11-16");
+    await expect(fetchSkiddle("bad", new Date(), { fetcher: async () => ({ ok: false, status: 403, json: async () => ({}) }) })).rejects.toThrow(/403/);
+  });
+});
+
+describe("picks", () => {
+  it("waits for a liked place that opens later, rather than dropping it", () => {
+    const pub = place("pub-late", "pub");
+    const busyDay = [
+      ...Array.from({ length: 6 }, (_, i) => event(`morning-${i}`, "talk", { startTime: `${10 + i}:00`.padStart(5, "0"), price: 0, free: true })),
+      event("show-1", "theatre", { startTime: "16:00", price: 10 }),
+    ];
+    for (const seed of [1, 2, 3, 4]) {
+      const r = plan({ ...base, start: "10:00", end: "22:00", interests: ["gigs"], prefer: ["pub-late"], seed }, cork, [pub], busyDay);
+      expect(r.plans[0].stops.map((s) => s.id)).toContain("pub-late");
+    }
+  });
+
+  it("builds the plan around an evening-only pick even when the day is full of other things", () => {
+    const venue = place("music-venue", "music", { indoor: true });
+    const daytime = Array.from({ length: 8 }, (_, i) => place(`day-${i}`, "museum", at(0.001 * i, 0)));
+    const evening = event("late-gig", "gig", { startTime: "20:00", price: 15 });
+    for (const seed of [1, 2, 3]) {
+      const r = plan({ ...base, start: "10:00", end: "22:00", interests: ["gigs"], prefer: ["music-venue"], seed }, cork, [venue, ...daytime], [evening]);
+      const stop = r.plans[0].stops.find((s) => s.id === "music-venue");
+      expect(stop, `seed ${seed}`).toBeTruthy();
+      expect(toMin(stop!.start)).toBeGreaterThanOrEqual(19 * 60); // when it's actually open
+    }
   });
 });

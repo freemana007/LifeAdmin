@@ -92,6 +92,7 @@ export async function createServerlessParts(env: NodeJS.ProcessEnv = process.env
     snapshotPath: serverFile("data/freetime-snapshot.json"),
     live: true, // forecasts on demand; listings refresh only via the daily scheduled job
     ticketmasterKey: env.TICKETMASTER_API_KEY,
+    skiddleKey: env.SKIDDLE_API_KEY,
     blobs: store,
   });
   return { store, freeTime };

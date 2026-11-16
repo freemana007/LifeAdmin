@@ -2,11 +2,11 @@
 
 export const KINDS = [
   "walk", "nature", "beach", "heritage", "museum", "music", "gig", "club", "pub", "comedy", "theatre",
-  "festival", "family", "food", "market", "sport", "water", "wellness", "tour", "talk", "other",
+  "festival", "family", "food", "market", "sport", "water", "wellness", "tour", "talk", "exhibition", "class", "other",
 ] as const;
 export type Kind = (typeof KINDS)[number];
 
-export type SourceId = "failte-attractions" | "failte-events" | "sport-ireland-trails" | "ticketmaster";
+export type SourceId = "failte-attractions" | "failte-events" | "sport-ireland-trails" | "ticketmaster" | "skiddle";
 
 export interface Place {
   id: string;

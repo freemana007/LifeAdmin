@@ -2,8 +2,9 @@
  * Turns a free slot ("Saturday 14:00–18:00 near Cork, with kids, €20 each, walks + heritage")
  * into up to three short itineraries built only from the places and events it is given.
  *
- * Pure and deterministic: the same inputs always give the same plans. Used by the API
- * and, unchanged, by the phone demo in the browser.
+ * Pure: the same inputs (including `seed`) always give the same plans, so tests are
+ * repeatable; callers pass a fresh seed to get a different deal. Used by the API and,
+ * unchanged, by the phone demo in the browser.
  */
 import type { Town } from "./towns.js";
 import type { Forecast, FtEvent, Kind, Place } from "./types.js";
@@ -21,7 +22,7 @@ export const INTEREST_KINDS: Record<Interest, Kind[]> = {
   rainy: [],
   food: ["food", "market"],
   sport: ["sport", "water"],
-  arts: ["theatre", "museum", "festival", "talk"],
+  arts: ["theatre", "museum", "festival", "talk", "exhibition", "class"],
 };
 
 export interface PlanRequest {
@@ -39,6 +40,10 @@ export interface PlanRequest {
   prefer?: string[];
   /** Items they swiped left on: never suggested. */
   avoid?: string[];
+  /** Shuffles the order: a different seed gives a different deal. Defaults to 0. */
+  seed?: number;
+  /** Items shown to them in the last few days: pushed down so new things come up. */
+  recent?: string[];
 }
 
 export type Taste = Partial<Record<Kind, { like: number; pass: number }>>;
@@ -202,12 +207,27 @@ export function summariseWeather(forecast: Forecast | null, date: string, start:
 const KIND_WORD: Record<Kind, string> = {
   walk: "walk", nature: "nature spot", beach: "beach", heritage: "heritage site", museum: "museum", music: "music",
   gig: "gig", club: "club night", pub: "pub", comedy: "comedy", theatre: "show", festival: "festival", family: "family fun",
-  food: "food", market: "market", sport: "activity", water: "water sports", wellness: "spa", tour: "tour", talk: "talk",
+  food: "food", market: "market", sport: "activity", water: "water sports", wellness: "spa", tour: "tour", talk: "talk", exhibition: "exhibition", class: "class",
   other: "visit",
 };
 
 type Candidate = (Place | FtEvent) & { distFromTown: number; base: number };
 const isEvent = (p: Place | FtEvent): p is FtEvent => "startDate" in p;
+
+/**
+ * A dated event: on for a few days at most (a gig, a show, a weekend festival).
+ * Listings that span weeks (an exhibition, "every Saturday until March") are
+ * regular activities: worth doing, but not something special about that day.
+ */
+export function isDated(p: Place | FtEvent): p is FtEvent {
+  if (!isEvent(p)) return false;
+  const days = (Date.parse(p.endDate) - Date.parse(p.startDate)) / 86_400_000;
+  return days <= 3;
+}
+
+const normName = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, " ").trim();
+/** Same thing listed twice (several rows for one show, or two sources): one card. */
+const sameThingKey = (p: Place | FtEvent) => `${normName(p.name)}|${isEvent(p) ? normName(p.venue ?? "") : `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`}`;
 
 function jitter(id: string, seed: number): number {
   let h = 2166136261 ^ seed;
@@ -231,12 +251,15 @@ function baseScore(p: Place | FtEvent, req: PlanRequest, kinds: Set<Kind>, rainy
   if (req.interests.includes("rainy")) s += p.indoor ? 2 : -1;
   if (req.interests.includes("family") && p.kidFriendly) s += 1.5;
   if (req.who === "kids") s += p.kidFriendly ? 1.5 : -1;
-  if (isEvent(p)) s += 1.2; // something on that day beats a place that's always there
+  // Something on that day beats a place that's always there; a long-running listing doesn't.
+  if (isDated(p)) s += 1.5;
+  else if (isEvent(p)) s += 0.3;
+  if (req.recent?.includes(p.id)) s -= 1.8;
   if (rainy) s += p.indoor ? 2 : -3;
   if (p.url) s += 0.3;
   if (req.budget !== null && req.budget <= 10 && p.free) s += 0.7;
   if (p.kind === "other" || p.kind === "tour") s -= 0.5;
-  s += tasteBoost(req.taste, p.kind);
+  s += tasteBoost(req.taste, p.kind) * 1.6; // what they swiped on outweighs novelty
   if (req.prefer?.includes(p.id)) s += 6;
   // Registered trails are the most reliable walks (length and difficulty are known).
   if (p.source === "sport-ireland-trails" && kinds.has("walk")) s += 0.8;
@@ -285,7 +308,9 @@ function fit(c: Candidate, ctx: Ctx, cursor: number, at: { lat: number; lng: num
   if (fixedStart !== null && arrive > fixedStart + 10) return null; // would miss the start
   const begin = Math.max(arrive, open, fixedStart ?? 0);
   const wait = begin - arrive;
-  if (wait > (fixedStart !== null ? 45 : 60)) return null;
+  // Something they picked is worth waiting longer for (a pub that opens at noon).
+  const picked = ctx.req.prefer?.includes(c.id);
+  if (wait > (picked ? 180 : fixedStart !== null ? 45 : 60)) return null;
   const latest = Math.min(windowEnd, close);
   if (fixedStart !== null) {
     // A show that runs past the end of the slot is fine if most of it fits.
@@ -349,7 +374,7 @@ function fill(ctx: Ctx, cursor: number, at: { lat: number; lng: number }, window
       if (!t) continue;
       let score = c.base;
       score -= t.trip.roadKm / 10;
-      score -= t.wait / (t.fixed ? 45 : 30);
+      score -= ctx.req.prefer?.includes(c.id) ? t.wait / 90 : t.wait / (t.fixed ? 45 : 30);
       score -= (ctx.kindCount.get(c.kind) ?? 0) * 2.2;
       if (stops.length && stops[stops.length - 1].kind === c.kind) score -= 1.5;
       if (c.kind === "food" && ctx.long && mealTime && !hadFood) score += 2.5;
@@ -384,8 +409,21 @@ function buildOne(pool: Candidate[], req: PlanRequest, town: Town, seed: number,
 
   // 1. Anchor: the best timed event that fits the slot (a gig at 8, a show at 7:30).
   const kinds = wantedKinds(req);
+  // Something they picked comes first: the plan is built around it, at a time it's open
+  // (a music venue in the evening, a museum in the afternoon), whatever else is on.
   let anchor: { c: Candidate; t: Timed; score: number } | null = null;
-  for (const c of pool) {
+  const picks = pool.filter((c) => req.prefer?.includes(c.id) && !banned.has(c.id));
+  for (const c of picks) {
+    let startAt: number | null;
+    if (isEvent(c)) startAt = c.startTime ? toMin(c.startTime) : (usualEventStart(c.kind) ?? Math.max(slotStart, usualHours(c.kind, c.indoor, ctx.month)[0]));
+    else startAt = Math.max(slotStart, usualHours(c.kind, c.indoor, ctx.month)[0]);
+    if (startAt < slotStart) continue;
+    const t = fit(c, ctx, Math.max(slotStart, startAt - travel(c.distFromTown).minutes), home, slotEnd);
+    if (!t) continue;
+    const score = c.base - c.distFromTown / 8 + jitter(c.id, seed) * 1.2;
+    if (!anchor || score > anchor.score) anchor = { c, t, score };
+  }
+  for (const c of anchor ? [] : pool) {
     if (!isEvent(c) || banned.has(c.id)) continue;
     const startAt = c.startTime ? toMin(c.startTime) : usualEventStart(c.kind);
     if (startAt === null || startAt < slotStart) continue;
@@ -410,6 +448,18 @@ function buildOne(pool: Candidate[], req: PlanRequest, town: Town, seed: number,
   const after = fill(ctx, anchor.t.finish, { lat: anchor.c.lat, lng: anchor.c.lng }, slotEnd, 1);
   const stops = [...before.stops, anchorStop, ...after.stops];
   return { stops, ids: stops.map((s) => s.id) };
+}
+
+/** Keeps the best-scoring one of each "same thing" in place (mutates `list`). */
+function dedupeBest<T extends Place | FtEvent>(list: T[], score: (x: T) => number) {
+  const best = new Map<string, T>();
+  for (const x of list) {
+    const k = sameThingKey(x);
+    const prev = best.get(k);
+    if (!prev || score(x) > score(prev) || (score(x) === score(prev) && x.id < prev.id)) best.set(k, x);
+  }
+  const keep = new Set(best.values());
+  for (let i = list.length - 1; i >= 0; i--) if (!keep.has(list[i])) list.splice(i, 1);
 }
 
 function titleFor(stops: PlanStop[]): string {
@@ -443,6 +493,7 @@ export function plan(
   };
   for (const p of places) consider(p);
   for (const e of events) if (e.startDate <= req.date && req.date <= e.endDate) consider(e);
+  dedupeBest(pool, (c) => c.base);
   // Keep the search quick: the best few hundred by base score, food always included for meal stops.
   pool.sort((a, b) => b.base - a.base || a.distFromTown - b.distFromTown || a.id.localeCompare(b.id));
   const trimmed = [...pool.filter((p) => p.kind !== "food").slice(0, 400), ...pool.filter((p) => p.kind === "food").slice(0, 60)];
@@ -450,7 +501,9 @@ export function plan(
   const plans: Plan[] = [];
   const banned = new Set<string>();
   const seen = new Set<string>();
-  for (let seed = 1; seed <= 6 && plans.length < 3; seed++) {
+  const seed0 = (req.seed ?? 0) * 7;
+  for (let i = 1; i <= 6 && plans.length < 3; i++) {
+    const seed = seed0 + i;
     const { stops, ids } = buildOne(trimmed, req, town, seed, banned);
     if (!stops.length) break;
     const key = [...ids].sort().join("|");
@@ -460,7 +513,7 @@ export function plan(
     seen.add(key);
     const known = stops.reduce((s, x) => s + (x.price ?? 0), 0);
     plans.push({
-      id: `plan-${seed}-${ids[0]}`,
+      id: `plan-${i}-${ids[0]}`,
       title: titleFor(stops),
       stops,
       knownCostPerPerson: Math.round(known * 100) / 100,
@@ -492,7 +545,10 @@ export interface DeckCard {
   venue: string | null;
   /** "8pm-ish", "Starts 19:30", "Open usual hours", … */
   when: string;
+  /** A dated event happening that day. */
   event: boolean;
+  /** A long-running listing (runs on selected dates over weeks): check it's on. */
+  regular?: boolean;
   lengthKm?: number;
   difficulty?: string;
 }
@@ -501,13 +557,13 @@ export interface DeckCard {
  * Everything on near the chosen town that day, best first for this person, for
  * swiping. Cards already swiped (`seen`) are left out.
  */
-export function deck(req: PlanRequest, town: Town, places: Place[], events: FtEvent[], seen: Set<string>, limit = 40, seed = 1): DeckCard[] {
+export function deck(req: PlanRequest, town: Town, places: Place[], events: FtEvent[], seen: Set<string>, limit = 40, seed = req.seed ?? 1): DeckCard[] {
   const kinds = wantedKinds(req);
   const radius = Math.max(2, Math.min(req.radiusKm, 80));
   const month = Number(req.date.slice(5, 7)) - 1;
   const slotStart = toMin(req.start);
   const slotEnd = toMin(req.end) <= slotStart ? toMin(req.end) + 24 * 60 : toMin(req.end);
-  const scored: { card: DeckCard; score: number }[] = [];
+  const scored: { card: DeckCard; score: number; item: Place | FtEvent }[] = [];
   const add = (p: Place | FtEvent) => {
     if (seen.has(p.id)) return;
     if (p.kind === "food" && !req.interests.includes("food")) return;
@@ -515,12 +571,14 @@ export function deck(req: PlanRequest, town: Town, places: Place[], events: FtEv
     if (d > radius) return;
     const base = baseScore(p, req, kinds, false);
     if (base === null) return;
+    const dated = isDated(p);
     // Only things you could actually do in the slot.
     let when: string;
     if (isEvent(p)) {
       const start = p.startTime ? toMin(p.startTime) : usualEventStart(p.kind);
       if (start !== null && (start < slotStart - 30 || start > slotEnd - 45)) return;
       when = p.startTime ? `Starts ${p.startTime}` : start !== null ? `Usually around ${fmt(start)}` : "Daytime, times not listed";
+      if (!dated) when = `${when}. Runs regularly, check dates`;
     } else {
       const [open, close] = usualHours(p.kind, p.indoor, month);
       if (Math.min(close, slotEnd) - Math.max(open, slotStart) < 45) return;
@@ -529,6 +587,7 @@ export function deck(req: PlanRequest, town: Town, places: Place[], events: FtEv
     const score = base - d / 10 + jitter(p.id, seed) * 1.5;
     scored.push({
       score,
+      item: p,
       card: {
         id: p.id,
         name: p.name,
@@ -546,7 +605,8 @@ export function deck(req: PlanRequest, town: Town, places: Place[], events: FtEv
         summary: p.summary,
         venue: isEvent(p) ? p.venue : null,
         when,
-        event: isEvent(p),
+        event: dated,
+        regular: isEvent(p) && !dated,
         lengthKm: p.lengthKm,
         difficulty: p.difficulty,
       },
@@ -554,15 +614,45 @@ export function deck(req: PlanRequest, town: Town, places: Place[], events: FtEv
   };
   for (const p of places) add(p);
   for (const e of events) if (e.startDate <= req.date && req.date <= e.endDate) add(e);
-  scored.sort((a, b) => b.score - a.score || a.card.id.localeCompare(b.card.id));
-  // Mix it up: don't show more than three of one kind in a row near the top.
+  const scoreOf = new Map(scored.map((x) => [x.item, x.score]));
+  const items = scored.map((x) => x.item);
+  dedupeBest(items, (x) => scoreOf.get(x) ?? 0);
+  const kept = new Set(items);
+  const ranked = scored.filter((x) => kept.has(x.item)).sort((a, b) => b.score - a.score || a.card.id.localeCompare(b.card.id));
+
+  // Mix it up: at least one dated event in every three cards (while there are any),
+  // and a spread of kinds.
   const out: DeckCard[] = [];
-  const rest: DeckCard[] = [];
-  for (const { card } of scored) {
-    const last3 = out.slice(-3);
-    if (last3.length === 3 && last3.every((c) => c.kind === card.kind)) rest.push(card);
-    else out.push(card);
-    if (out.length >= limit) break;
+  const used = new Set<string>();
+  const dated = ranked.filter((x) => x.card.event);
+  let di = 0;
+  let ri = 0;
+  while (out.length < limit) {
+    const last2 = out.slice(-2);
+    let next: DeckCard | undefined;
+    if (out.length % 3 === 2 && !last2.some((c) => c.event)) {
+      while (di < dated.length && used.has(dated[di].card.id)) di++;
+      next = dated[di]?.card;
+    }
+    if (!next) {
+      const last3 = out.slice(-3);
+      const last9 = out.slice(-9);
+      // Not more than three of a kind in a row, nor in any ten cards.
+      const sameRun = (c: DeckCard) =>
+        (last3.length === 3 && last3.every((x) => x.kind === c.kind)) || last9.filter((x) => x.kind === c.kind).length >= 3;
+      let j = ri;
+      while (j < ranked.length && (used.has(ranked[j].card.id) || sameRun(ranked[j].card))) j++;
+      if (j >= ranked.length) {
+        // Only same-kind cards left: allow them.
+        j = ri;
+        while (j < ranked.length && used.has(ranked[j].card.id)) j++;
+      }
+      next = ranked[j]?.card;
+      while (ri < ranked.length && used.has(ranked[ri].card.id)) ri++;
+    }
+    if (!next) break;
+    used.add(next.id);
+    out.push(next);
   }
-  return [...out, ...rest].slice(0, limit);
+  return out;
 }

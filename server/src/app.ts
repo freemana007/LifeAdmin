@@ -444,7 +444,28 @@ export function createApp({
     who: z.enum(["solo", "couple", "kids", "friends"]).default("couple"),
     budget: z.number().min(0).max(1000).nullable().default(null),
     interests: z.array(z.enum(INTERESTS)).max(INTERESTS.length).default([]),
+    /** Optional: the same seed gives the same deal (tests); otherwise each request shuffles. */
+    seed: z.number().int().min(0).max(2 ** 31).optional(),
   });
+
+  const SHOWN_DAYS = 7;
+  const recentOf = (t: FreeTimeTaste) => {
+    const since = now().getTime() - SHOWN_DAYS * 86_400_000;
+    return (t.shown ?? []).filter((s) => Date.parse(s.at) >= since).map((s) => s.id);
+  };
+  /** Remember what was put in front of them, so the next deal leads with new things. */
+  const markShown = (userId: string, ids: string[]) => {
+    if (!ids.length) return;
+    store.mutate((db) => {
+      db.freeTimeTaste ??= [];
+      let t = db.freeTimeTaste.find((x) => x.userId === userId);
+      if (!t) db.freeTimeTaste.push((t = { userId, kinds: {}, liked: [], passed: [] }));
+      const at = now().toISOString();
+      const fresh = new Set(ids);
+      t.shown = [...(t.shown ?? []).filter((s) => !fresh.has(s.id)), ...ids.map((id) => ({ id, at }))].slice(-300);
+    });
+  };
+  const newSeed = () => Math.floor(Math.random() * 2 ** 31);
 
   const tasteOf = (userId: string): FreeTimeTaste =>
     store.data.freeTimeTaste?.find((t) => t.userId === userId) ?? { userId, kinds: {}, liked: [], passed: [] };
@@ -461,12 +482,15 @@ export function createApp({
       const result = await freeTime.plan(
         {
           ...body,
+          seed: body.seed ?? newSeed(),
+          recent: recentOf(t),
           taste: t.kinds as Taste,
           avoid: t.passed.map((p) => p.id),
           prefer: body.usePicks ? t.liked.filter((l) => l.date === body.date).map((l) => l.id) : undefined,
         },
         town,
       );
+      markShown(req.user!.id, result.plans.flatMap((p) => p.stops.map((s) => s.id)));
       res.json({ ...result, town, ...freeTime.status() });
     }),
   );
@@ -481,7 +505,10 @@ export function createApp({
       if (!town) throw new HttpError(400, "Choose a town from the list.");
       const t = tasteOf(req.user!.id);
       const seen = new Set([...t.passed.map((p) => p.id), ...t.liked.filter((l) => l.date === body.date).map((l) => l.id)]);
-      res.json({ cards: freeTime.deck({ ...body, taste: t.kinds as Taste }, town, seen), ...tasteView(t) });
+      const cards = freeTime.deck({ ...body, seed: body.seed ?? newSeed(), recent: recentOf(t), taste: t.kinds as Taste }, town, seen);
+      // The first few are what they actually see before deciding to swipe on.
+      markShown(req.user!.id, cards.slice(0, 8).map((c) => c.id));
+      res.json({ cards, ...tasteView(t), ...freeTime.status() });
     }),
   );
 

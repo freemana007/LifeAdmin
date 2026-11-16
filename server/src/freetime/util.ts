@@ -43,12 +43,12 @@ export const safeUrl = (u: string | null | undefined) => {
   }
 };
 
-export const INDOOR_KINDS = new Set<Kind>(["museum", "music", "pub", "club", "comedy", "theatre", "food", "wellness", "talk"]);
+export const INDOOR_KINDS = new Set<Kind>(["museum", "music", "pub", "club", "comedy", "theatre", "food", "wellness", "talk", "exhibition", "class"]);
 export const ADULT_KINDS = new Set<Kind>(["pub", "club"]);
 
 /** Typical visit length by kind, in minutes. */
 export const DEFAULT_DURATION: Record<Kind, number> = {
   walk: 90, nature: 90, beach: 90, heritage: 75, museum: 90, music: 120, gig: 150, club: 180, pub: 90,
   comedy: 120, theatre: 150, festival: 120, family: 120, food: 75, market: 60, sport: 120, water: 150,
-  wellness: 120, tour: 120, talk: 90, other: 90,
+  wellness: 120, tour: 120, talk: 90, exhibition: 75, class: 120, other: 90,
 };

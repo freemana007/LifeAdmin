@@ -24,6 +24,7 @@ export interface FreeTimeOptions {
   /** Fetch live data (daily) and forecasts. Off in tests. */
   live?: boolean;
   ticketmasterKey?: string;
+  skiddleKey?: string;
   /** Inject a forecast function (tests). */
   forecast?: (lat: number, lng: number) => Promise<Forecast>;
 }
@@ -35,6 +36,7 @@ export class FreeTimeService {
   private forecasts = new Map<string, { at: number; value: Forecast | null; error?: string }>();
   private refreshing: Promise<void> | null = null;
   private checkedStoredAt = 0;
+  private lastStaleAttempt = 0;
   private metStatus: SourceStatus = { ...SOURCE_INFO["met-eireann"], ok: false, count: 0, updatedAt: null };
 
   constructor(private readonly opts: FreeTimeOptions = {}) {
@@ -48,7 +50,17 @@ export class FreeTimeService {
    * up newer listings saved by the daily refresh job (checked at most hourly).
    */
   async ensureFresh(): Promise<void> {
-    if (!this.opts.blobs || Date.now() - this.checkedStoredAt < 60 * 60 * 1000) return;
+    // A long-running server whose listings are over 26 hours old (a missed daily
+    // refresh) refreshes in the background; this request uses what it has.
+    if (!this.opts.blobs) {
+      const stale = Date.now() - Date.parse(this.data.generatedAt) > 26 * 60 * 60 * 1000;
+      if (this.opts.live && stale && Date.now() - this.lastStaleAttempt > 60 * 60 * 1000) {
+        this.lastStaleAttempt = Date.now();
+        void this.refresh();
+      }
+      return;
+    }
+    if (Date.now() - this.checkedStoredAt < 60 * 60 * 1000) return;
     this.checkedStoredAt = Date.now();
     try {
       const stored = await this.opts.blobs.getBlob<Dataset>(DATASET_KEY);
@@ -76,7 +88,7 @@ export class FreeTimeService {
     if (!this.opts.live) return Promise.resolve();
     this.refreshing ??= (async () => {
       try {
-        const fresh = await buildDataset({ ticketmasterKey: this.opts.ticketmasterKey });
+        const fresh = await buildDataset({ ticketmasterKey: this.opts.ticketmasterKey, skiddleKey: this.opts.skiddleKey });
         const kept = (id: SourceStatus["id"]) => fresh.sources.find((s) => s.id === id)?.ok;
         const places = [
           ...fresh.places,

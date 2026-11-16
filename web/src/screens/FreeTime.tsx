@@ -27,14 +27,14 @@ const INTEREST_LABEL: Record<Interest, { label: string; cat: Category }> = {
 /** Colour by what kind of outing it is (same palette as the rest of the app). */
 const KIND_CAT: Record<string, Category> = {
   walk: "warranty", nature: "warranty", beach: "warranty",
-  heritage: "official", museum: "official", tour: "official", talk: "official", theatre: "official", festival: "official",
+  heritage: "official", museum: "official", tour: "official", talk: "official", exhibition: "official", class: "official", theatre: "official", festival: "official",
   gig: "receipt", music: "receipt", club: "receipt", pub: "receipt", comedy: "receipt",
   food: "renewal", market: "renewal",
   family: "bill",
   sport: "contract", water: "contract", wellness: "contract", other: "other",
 };
 const KIND_LABEL: Record<string, string> = {
-  walk: "Walk", nature: "Nature", beach: "Beach", heritage: "Heritage", museum: "Museum & gallery", tour: "Tour", talk: "Talk & workshop",
+  walk: "Walk", nature: "Nature", beach: "Beach", heritage: "Heritage", museum: "Museum & gallery", tour: "Tour", talk: "Talk", exhibition: "Exhibition", class: "Class & workshop",
   theatre: "Show", festival: "Festival", gig: "Gig", music: "Live music", club: "Club night", pub: "Pub", comedy: "Comedy",
   food: "Food", market: "Market", family: "Family", sport: "Active", water: "On the water", wellness: "Spa", other: "Visit",
 };
@@ -370,9 +370,17 @@ export function FreeTime({ initialDate }: { go: (v: View) => void; initialDate?:
             <h2 id="ft-deck-title" className="ft-plan-title">
               What's on near {towns.find((t) => t.id === prefs.near)?.name ?? "you"}
             </h2>
-            <span className="small muted">{cards.length} left</span>
+            <div className="row">
+              <span className="small muted">{cards.length} left</span>
+              <Button variant="ghost" icon="retry" onClick={() => void startDeck()} disabled={busy}>
+                Shuffle
+              </Button>
+            </div>
           </div>
-          <p className="small muted">Swipe right for yes, left for no. We'll remember what you like.</p>
+          <p className="small muted">
+            Swipe right for yes, left for no. We'll remember what you like, and show you new things first.
+            {updated ? ` Listings updated ${updated}.` : ""}
+          </p>
           {cards.length ? (
             <SwipeDeck
               cards={cards}
@@ -449,11 +457,15 @@ export function FreeTime({ initialDate }: { go: (v: View) => void; initialDate?:
                 <Button variant="primary" icon="check" onClick={() => save(current)}>
                   Save plan
                 </Button>
-                {result.plans.length > 1 && (
-                  <Button variant="secondary" icon="retry" onClick={() => setWhich((w) => (w + 1) % result.plans.length)}>
-                    Show another plan
-                  </Button>
-                )}
+                <Button
+                  variant="secondary"
+                  icon="retry"
+                  disabled={busy}
+                  // Step through this batch, then ask for a fresh one (new things come up first).
+                  onClick={() => (which + 1 < result.plans.length ? setWhich(which + 1) : void makePlan())}
+                >
+                  Show another plan
+                </Button>
               </div>
             </>
           )}

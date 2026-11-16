@@ -68,13 +68,20 @@ The **Free time** tab plans your free hours in Ireland. You choose a day, a time
 
 **Swipe through what's on:** a Tinder-style deck of everything on near you that day. Drag a card right (or tap ♥, or press →) to like it, and left (✕ / ←) to pass. Each person's likes and passes are remembered by type of outing (gigs, walks, pubs…). That taste shapes what's shown first and how plans are scored. Things you passed on are never suggested again, and "Plan with my picks" builds the day around what you liked. "Your taste" shows what you like and what you're less keen on, with a reset.
 
+**Something new each time:**
+- **Shuffle.** Every deck and every batch of plans is shuffled, and **Shuffle** deals again.
+- **New things first.** Cards and plan stops shown to you in the last 7 days move down the list.
+- **A mix of kinds.** There's a dated event (on that day only) in at least every third card while there are any. No more than three of one kind appear in any ten cards, and duplicate listings are merged.
+- **Long-running listings,** like an exhibition until March or "every Saturday", are marked **Runs regularly, check dates** instead of "On that day". They don't outrank real one-off events.
+
 | Source | Used for | Licence |
 |---|---|---|
 | [Fáilte Ireland – Tourism Activities and Attractions](https://data.gov.ie/dataset/tourism-activities-and-attractions) | Heritage, museums, beaches, walks, food, pubs, activities | CC BY 4.0 |
 | [Fáilte Ireland – Events](https://data.gov.ie/dataset/events) | Gigs, shows, comedy, family events, festivals, markets (updated daily) | CC BY 4.0 |
 | [Get Ireland Active – Sport Ireland trailheads](https://data.gov.ie/dataset/getirelandactive_trailheads) | 1,600+ registered walking, cycling and paddling trails | CC BY 4.0 |
 | Met Éireann forecast API | Rain and temperature for the chosen time, so plans lean indoors when it's wet | CC BY 4.0 |
-| Ticketmaster Discovery API | Extra gigs, club nights and sport. **Off unless `TICKETMASTER_API_KEY` is set.** | Ticketmaster API terms |
+| [Skiddle](https://www.skiddle.com/api/) | Gigs, club nights, comedy and theatre with real dates, times and prices. **Off unless `SKIDDLE_API_KEY` is set** (free key). | Skiddle API terms (credit and link back) |
+| [Ticketmaster Discovery API](https://developer.ticketmaster.com/) | Big-venue gigs, shows and sport. **Off unless `TICKETMASTER_API_KEY` is set** (free key). | Ticketmaster API terms |
 
 entertainment.ie has no public feed or data licence that we could find, so it isn't used. It can be added as a source if they agree to supply a feed.
 
@@ -83,6 +90,10 @@ How the data is kept up to date:
 - The snapshot is committed, so the app and the phone demo work offline.
 - The server loads the snapshot at start-up, then refreshes from the live sources once a day. Set `FREETIME_LIVE=0` to turn the refresh off.
 - If a source fails, the other sources and the previous data stay in use.
+- If the listings are ever over 26 hours old (a missed refresh), the next Free time request starts a refresh in the background.
+- On Netlify or Vercel, a scheduled job refreshes daily and saves the listings to the database.
+- **Duplicates removed.** The same event from two sources counts once (by name, venue and date).
+- **Event types.** Fáilte's "Event Type" column is nearly always just "Event", so the kind (gig, show, exhibition, class, tour…) comes from the event's name, then its description.
 
 ## Phone demo
 
@@ -121,6 +132,7 @@ Everything is configured in `vercel.json`.
    | `ANTHROPIC_API_KEY` | Optional but recommended: reads photos and writes tailored drafts. Without it, the offline reader and templates are used. |
    | `INBOUND_SECRET`, `INBOX_DOMAIN` | Optional: only once an inbound email provider (Postmark, SendGrid…) posts to `/api/inbound/email`. |
    | `TICKETMASTER_API_KEY` | Optional: extra gigs in Free time. |
+   | `SKIDDLE_API_KEY` | Optional: gigs, club nights and comedy in Free time. |
 
 4. **Deploy.** When it's live, open `/api/health`; it should say `{"ok":true,…}`. Then sign up in the app.
 5. **Cron jobs** run automatically:
@@ -166,7 +178,8 @@ REVOKE ALL ON SCHEMA lifeadmin FROM PUBLIC;
 |---|---|
 | `DATABASE_URL` (secret, required) | `postgresql://lifeadmin_app.<project-ref>:<password>@aws-<n>-eu-west-1.pooler.supabase.com:6543/postgres`. This is the **transaction pooler** string from Supabase → **Connect**, with the user changed to `lifeadmin_app.<project-ref>`. |
 | `ANTHROPIC_API_KEY` | Optional: photo reading and AI drafts |
-| `INBOUND_SECRET`, `INBOX_DOMAIN`, `TICKETMASTER_API_KEY` | Optional |
+| `SKIDDLE_API_KEY`, `TICKETMASTER_API_KEY` (secret) | Optional: more gigs, club nights and comedy in Free time. Free keys from skiddle.com/api and developer.ticketmaster.com. |
+| `INBOUND_SECRET`, `INBOX_DOMAIN` | Optional |
 
 - **Certificate checks.** Connections to Supabase are encrypted and verified against Supabase's root certificate, which ships in `server/certs/`. For another Postgres provider, set `DATABASE_CA_CERT` to its CA certificate (PEM), or the connection is encrypted without the certificate being checked.
 - **Schema name.** `DATABASE_SCHEMA` changes the schema name (default `lifeadmin`).

@@ -440,6 +440,17 @@ async function coreTests(browser, mode) {
     await page.waitForFunction((k) => document.querySelector(".taste")?.textContent?.includes(k), firstKind, { timeout: 5000 });
   });
 
+  await step(G, "Free time: Shuffle deals new cards; the listings date is shown", async () => {
+    expect(/Listings updated \d+ \w+/.test(await text(page, "#ft-deck")), "the deck should say when the listings were updated");
+    const before = await page.locator(".swipe-card").evaluateAll((els) => els.map((e) => e.querySelector("h3")?.textContent).join("|"));
+    await page.click('#ft-deck button:has-text("Shuffle")');
+    await page
+      .waitForFunction((b) => [...document.querySelectorAll(".swipe-card")].map((e) => e.querySelector("h3")?.textContent).join("|") !== b, before, { timeout: 8000 })
+      .catch(() => {
+        throw new Error("Shuffle should change the cards on top");
+      });
+  });
+
   await step(G, "Free time: taste and picks survive reload; Plan with my picks includes them", async () => {
     const pick = (await page.locator(".picks li strong").first().innerText()).trim();
     await reload(page);

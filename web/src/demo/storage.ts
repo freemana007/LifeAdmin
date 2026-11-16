@@ -27,6 +27,8 @@ export interface StoredTaste {
   kinds: Record<string, { like: number; pass: number }>;
   liked: (Record<string, unknown> & { id: string; kind: string; date: string; likedAt: string })[];
   passed: { id: string; kind: string }[];
+  /** Recently shown cards and plan stops, so the next deal leads with new things. */
+  shown?: { id: string; at: string }[];
 }
 
 export interface Backend {
